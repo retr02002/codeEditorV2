@@ -1,0 +1,129 @@
+.topbar {
+    height: 38px;
+    background-color: var(--topbar-bg);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+    z-index: 1000;
+    position: relative;
+    top: 0;
+    left: 0;
+    width: 100%;
+}
+
+.topbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent-color);
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 20px;
+}
+
+.topbar-logo svg {
+    stroke: var(--accent-color);
+}
+
+.topbar-menu {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    z-index: 1001;
+}
+
+.menu-item-container {
+    height: 100%;
+    position: relative;
+}
+
+.menu-btn {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    padding: 0 12px;
+    height: 100%;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.1s;
+    font-family: inherit;
+}
+
+.menu-btn:hover,
+.menu-btn.active {
+    background-color: var(--hover-bg);
+    color: var(--text-active);
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: var(--dropdown-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    padding: 6px 0;
+    min-width: 220px;
+    z-index: 1002;
+    display: flex;
+    flex-direction: column;
+}
+
+.dropdown-menu button {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    text-align: left;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.1s;
+}
+
+.dropdown-menu button:hover {
+    background-color: var(--accent-color);
+    color: #fff;
+}
+
+.menu-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 4px 0;
+}
+
+.menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+}
+
+@media (max-width: 768px) {
+    .topbar-logo {
+        margin-right: 10px;
+    }
+
+    .topbar-logo span {
+        display: none;
+    }
+
+    .topbar-logo svg {
+        margin-left: 4px;
+    }
+
+    .menu-btn {
+        padding: 0 5px;
+        font-size: 11px;
+    }
+
+    .topbar {
+        padding: 0 4px;
+    }
+}

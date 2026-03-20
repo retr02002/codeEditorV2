@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="out">Loading...</div>
+<script type="text/babel" data-presets="env,typescript">
+  document.getElementById('out').textContent = 'Done!';
+  const x: number = 42;
+</script>
+</body>
+</html>

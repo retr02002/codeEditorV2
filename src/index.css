@@ -1,0 +1,313 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Premium Dark Theme Palette */
+  --bg-color: #0d1017;
+  --topbar-bg: #161b22;
+  --panel-bg: #0d1017;
+  --panel-inner-bg: #161b22;
+  --header-bg: #161b22;
+  --border-color: #30363d;
+
+  --text-primary: #8b949e;
+  --text-active: #c9d1d9;
+  --text-heading: #f0f6fc;
+
+  --accent-color: #2f81f7;
+  --accent-hover: #388bfd;
+  --hover-bg: #21262d;
+  --dropdown-bg: #1c2128;
+  --splitter-color: #30363d;
+  --splitter-hover: #2f81f7;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+}
+
+.app-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-workspace {
+  flex: 1;
+  height: calc(100% - 38px);
+  position: relative;
+  display: flex;
+}
+
+.workspace-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-bar {
+  width: 48px;
+  background-color: #11141a;
+  /* slightly darker than inner bg */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 12px;
+  gap: 16px;
+  border-right: 1px solid var(--border-color);
+  z-index: 10;
+}
+
+.activity-action {
+  color: #6e7681;
+  cursor: pointer;
+  padding: 8px 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  border-left: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.activity-action:hover {
+  color: #c9d1d9;
+}
+
+.activity-action.active {
+  color: #ffffff;
+  border-left-color: var(--accent-hover);
+}
+
+/* Explorer CSS additions here to save creating extra files */
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  user-select: none;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-item:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-active);
+}
+
+.file-item.active {
+  background-color: rgba(47, 129, 247, 0.12);
+  color: var(--text-active);
+}
+
+.file-item-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  z-index: 2;
+  /* above guide line */
+}
+
+.file-name {
+  margin-left: 2px;
+}
+
+.folder-chevron {
+  color: #8b949e;
+  margin-right: -2px;
+}
+
+.indent-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: #30363d;
+  opacity: 0.5;
+  z-index: 1;
+}
+
+/* React Split Layout Styles */
+.split {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+}
+
+.gutter {
+  background-color: var(--splitter-color);
+  background-repeat: no-repeat;
+  background-position: 50%;
+  cursor: col-resize;
+  transition: background-color 0.2s;
+  width: 5px !important;
+  z-index: 10;
+}
+
+.gutter:hover,
+.gutter:active {
+  background-color: var(--splitter-hover);
+}
+
+.panel {
+  background-color: var(--panel-inner-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Common Header for Panels */
+.panel-header {
+  height: 35px;
+  background-color: var(--header-bg);
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 12px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-active);
+  min-width: 0;
+  overflow: hidden;
+  gap: 4px;
+}
+
+.panel-header > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 4px;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-active);
+}
+
+/* Utility to hide un-maximized windows */
+.hidden {
+  display: none !important;
+}
+
+.full-screen-panel {
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 1 auto;
+}
+
+/* Mobile Layout Overrides */
+.mobile-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mobile-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+.mobile-bottom-tabs {
+  flex-shrink: 0;
+  height: 56px;
+  min-height: 56px;
+  background-color: #0d1017;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 2px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  width: 100%;
+}
+
+.mobile-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #7b8496;
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+  outline: none;
+}
+
+.mobile-tab span {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.mobile-tab.active {
+  color: #58a6ff;
+  background-color: rgba(88, 166, 255, 0.1);
+}
+
+.mobile-tab:hover:not(.active) {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #c9d1d9;
+}

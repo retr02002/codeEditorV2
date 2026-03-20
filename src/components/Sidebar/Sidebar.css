@@ -1,0 +1,207 @@
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    color: var(--text-primary);
+    background-color: var(--panel-bg);
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.section-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #2d2d2d;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.section-header:first-child {
+    border-top: none;
+}
+
+/* Explorer Styles */
+.file-list {
+    padding: 4px 0;
+    list-style: none;
+}
+
+.file-item {
+    padding: 4px 12px 4px 24px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.file-item:hover {
+    background-color: var(--hover-bg);
+}
+
+.file-item.active {
+    background-color: #37373d;
+    color: var(--text-active);
+}
+
+/* Github Importer */
+.github-importer {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.github-importer input {
+    padding: 6px 8px;
+    background-color: #1e1e1e;
+    border: 1px solid var(--border-color);
+    color: #fff;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.github-importer button {
+    padding: 6px;
+    background-color: var(--accent-color);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.github-importer button:hover {
+    background-color: #005f9e;
+}
+
+/* Terminal Container */
+.terminal-container {
+    flex-shrink: 0;
+    height: 220px;
+    background-color: #0d1117;
+    border-top: 2px solid var(--accent-color);
+    display: flex;
+    flex-direction: column;
+    transition: height 0.2s ease;
+}
+
+.terminal-container.collapsed {
+    height: 28px;
+}
+
+.terminal-header {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 4px 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: #58a6ff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    cursor: pointer;
+    user-select: none;
+}
+
+.terminal-header:hover {
+    background: #21262d;
+}
+
+.terminal-wrapper {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Extensions */
+.extensions-list {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.extension-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    background-color: var(--hover-bg);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.extension-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.extension-icon {
+    color: var(--accent-color);
+    flex-shrink: 0;
+}
+
+.extension-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ext-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-active);
+}
+
+.ext-author {
+    font-size: 11px;
+    color: var(--text-primary);
+}
+
+.install-btn {
+    align-self: flex-start;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    border: none;
+    background-color: var(--accent-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    transition: background-color 0.2s;
+}
+
+.install-btn:hover {
+    background-color: var(--accent-hover);
+}
+
+.install-btn.installed {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-active);
+}
+
+.install-btn.installed:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}

@@ -1,0 +1,498 @@
+.preview-workspace {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: var(--panel-inner-bg);
+    position: relative;
+    overflow: hidden;
+}
+
+.browser-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 6px 8px;
+    background-color: var(--panel-inner-bg);
+    border-bottom: 1px solid var(--border-color);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.browser-nav-btns {
+    display: flex;
+    gap: 4px;
+}
+
+.browser-nav-btns button {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.browser-nav-btns button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #c9d1d9;
+}
+
+.browser-address-bar {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    background: #0d1117;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 4px 10px;
+    gap: 6px;
+    max-width: 480px;
+    overflow: hidden;
+}
+
+.lock-icon {
+    color: #8b949e;
+}
+
+.address-url-input {
+    background: transparent;
+    border: none;
+    color: #c9d1d9;
+    font-size: 13px;
+    width: 100%;
+    outline: none;
+    font-family: inherit;
+}
+
+.browser-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.browser-device-toggles {
+    display: flex;
+    gap: 4px;
+    background: #0d1117;
+    padding: 2px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.browser-device-toggles button {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.browser-device-toggles button.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: #c9d1d9;
+}
+
+.browser-open-btn {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    padding: 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.browser-open-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #c9d1d9;
+}
+
+@media (max-width: 600px) {
+    .browser-toolbar {
+        flex-wrap: wrap;
+        padding: 5px 6px;
+    }
+
+    .browser-address-bar {
+        order: 3;
+        width: 100%;
+        margin-top: 4px;
+        max-width: none;
+    }
+}
+
+/* Hide device toggle buttons when the panel is too narrow to fit them */
+@media (max-width: 480px) {
+    .browser-device-toggles {
+        display: none;
+    }
+}
+
+/* Also hide device buttons inside .preview-toolbar when its container < 380px */
+.preview-toolbar .browser-device-toggles {
+    transition: opacity 0.2s;
+}
+
+
+.preview-window {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: var(--panel-bg);
+}
+
+.preview-content-wrapper {
+    flex: 1;
+    display: flex;
+    padding: 16px;
+    overflow: auto;
+}
+
+.preview-content-wrapper.desktop {
+    padding: 0;
+}
+
+.preview-content {
+    background-color: #fff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    margin: auto;
+    /* Magic centering trick that doesn't break overflow scrolling */
+}
+
+/* Eliminate shadow and force maximum stretch for desktop specifically */
+.preview-content-wrapper.desktop .preview-content {
+    margin: 0;
+    flex: 1;
+    box-shadow: none;
+}
+
+.preview-content iframe {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ─── Preview Tab Bar ──────────────────────────────────────── */
+.preview-tab-bar {
+    display: flex;
+    align-items: center;
+    background-color: #0d1117;
+    border-bottom: 1px solid var(--border-color);
+    height: 34px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.preview-tab-list {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.preview-tab-list::-webkit-scrollbar {
+    display: none;
+}
+
+.preview-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    height: 34px;
+    white-space: nowrap;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    color: #6e7681;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    min-width: 0;
+    flex-shrink: 0;
+}
+
+.preview-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #c9d1d9;
+}
+
+.preview-tab.active {
+    background: rgba(47, 129, 247, 0.1);
+    color: #c9d1d9;
+    border-bottom: 2px solid var(--accent-color);
+}
+
+.preview-tab-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #3fb950;
+    flex-shrink: 0;
+}
+
+.preview-tab.active .preview-tab-dot {
+    background: var(--accent-color);
+}
+
+.preview-tab-label {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    color: #6e7681;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.preview-tab-close:hover {
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+}
+
+.preview-tab-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 34px;
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border-color);
+    color: #6e7681;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.preview-tab-add:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #c9d1d9;
+}
+
+/* ─── Floating Preview Window ──────────────────────────────── */
+.floating-preview-window {
+    display: flex;
+    flex-direction: column;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.05);
+    user-select: none;
+}
+
+.floating-preview-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0d1117;
+    border-bottom: 1px solid #30363d;
+    padding: 0 12px;
+    height: 36px;
+    cursor: grab;
+    flex-shrink: 0;
+}
+
+.floating-preview-titlebar:active {
+    cursor: grabbing;
+}
+
+.floating-preview-titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.floating-preview-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #c9d1d9;
+    letter-spacing: 0.3px;
+}
+
+.floating-preview-titlebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fp-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #8b949e;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.fp-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #c9d1d9;
+}
+
+.fp-btn-close:hover {
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+}
+
+.floating-preview-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    flex-shrink: 0;
+}
+
+.fp-nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #8b949e;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.fp-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #c9d1d9;
+}
+
+.fp-address-bar {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    padding: 4px 12px;
+}
+
+.fp-address-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #c9d1d9;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.fp-address-input::placeholder {
+    color: #484f58;
+}
+
+.floating-preview-body {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    min-height: 0;
+}
+
+.floating-preview-resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+    height: 18px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 40%, #30363d 40%, #30363d 60%, transparent 60%),
+                linear-gradient(135deg, transparent 55%, #30363d 55%, #30363d 70%, transparent 70%);
+    z-index: 10;
+}
+
+/* ─── Floating window: device toggles ──────────────────────── */
+.fp-device-toggles {
+    display: flex;
+    gap: 2px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.fp-device-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #6e7681;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.fp-device-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #c9d1d9;
+}
+
+.fp-device-btn.active {
+    background: rgba(47, 129, 247, 0.2);
+    color: #2f81f7;
+}
+
+/* Tab indicator dot in titlebar */
+.fp-tab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+/* Viewport wrapper — centers narrow frames (mobile/tablet) */
+.floating-preview-viewport {
+    height: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
