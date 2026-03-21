@@ -6,7 +6,7 @@ interface IframeRendererProps {
 }
 
 export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'preview-iframe' }) => {
-    const { files, settings, activeFileId, environment } = useEditorStore();
+    const { files, settings, activeFileId, environment, pipPackages, activeVenv } = useEditorStore();
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     useEffect(() => {
@@ -82,7 +82,7 @@ export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'prev
                 }
             </script>`;
 
-            // ── Python environment: Skulpt REPL ───────────────────────────────
+            // ── Python environment: Pyodide REPL ───────────────────────────────
             if (environment === 'python') {
                 const pyFile = allFiles.find(f => f.name.endsWith('.py') && f.id === activeFileId)
                     || allFiles.find(f => f.name === 'main.py')
@@ -90,18 +90,18 @@ export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'prev
 
                 const pyCode = pyFile?.content || '# Write your Python code here\nprint("Hello, World!")';
                 const escaped = JSON.stringify(pyCode);
+                const packagesJson = JSON.stringify(pipPackages[activeVenv || 'global'] || []);
 
                 iframe.srcdoc = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; font-family: 'Fira Code', monospace; font-size: 13px; display: flex; flex-direction: column; height: 100vh; }
   #header { background: #161b22; border-bottom: 1px solid #30363d; padding: 8px 14px; font-size: 11px; color: #3fb950; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
-  #output { flex: 1; overflow-y: auto; padding: 14px; color: #c9d1d9; line-height: 1.7; white-space: pre-wrap; }
+  #output { flex: 1; overflow-y: auto; padding: 14px; color: #c9d1d9; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
   .stdout { color: #c9d1d9; }
   .stderr { color: #f85149; }
   .info { color: #58a6ff; font-style: italic; }
@@ -109,7 +109,7 @@ export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'prev
 ${devToolsScript}
 </head>
 <body>
-<div id="header">🐍 Python — Skulpt Runtime</div>
+<div id="header">🐍 Python — Pyodide Runtime</div>
 <div id="output"></div>
 <script>
 const out = document.getElementById('output');
@@ -121,23 +121,35 @@ const append = (text, cls) => {
   out.scrollTop = out.scrollHeight;
 };
 
-function builtinRead(x) {
-  if (Sk.builtinFiles === undefined || Sk.builtinFiles.files[x] === undefined)
-    throw Error("File not found: '" + x + "'");
-  return Sk.builtinFiles.files[x];
-}
-
-Sk.configure({
-  output: text => { if (text.trim()) append(text, 'stdout'); },
-  read: builtinRead,
-  retainGlobals: true,
-});
-
 const code = ${escaped};
-append('Running...', 'info');
-Sk.misceval.asyncToPromise(() => Sk.importMainWithBody('<stdin>', false, code, true))
-  .then(() => append('\\n✓ Done', 'info'))
-  .catch(e => append('Error: ' + e.toString(), 'stderr'));
+const pipPkgs = ${packagesJson};
+
+async function main() {
+    append('⏳ Loading Pyodide...', 'info');
+    try {
+        let pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/"
+        });
+        
+        pyodide.setStdout({ batched: (str) => append(str, 'stdout') });
+        pyodide.setStderr({ batched: (str) => append(str, 'stderr') });
+
+        if (pipPkgs && pipPkgs.length > 0) {
+            append('📦 Installing packages: ' + pipPkgs.join(', '), 'info');
+            await pyodide.loadPackage("micropip");
+            const micropip = pyodide.pyimport("micropip");
+            await micropip.install(pipPkgs);
+        }
+
+        append('▶ Running...', 'info');
+        await pyodide.runPythonAsync(code);
+        
+        append('\\n✓ Done', 'info');
+    } catch (err) {
+        append(err.toString(), 'stderr');
+    }
+}
+main();
 </script>
 </body>
 </html>`;
