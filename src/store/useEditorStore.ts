@@ -3,6 +3,24 @@ import { create } from "zustand";
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
+export interface FloatingWindow {
+  id: string;
+  tabId: string; // references a preview tab
+  x: number;
+  y: number;
+}
+
+export interface TerminalTab {
+  id: string;
+  name: string;
+}
+
+export interface FloatingTerminal {
+  id: string;
+  tabId: string;
+  x: number;
+  y: number;
+}
 export interface FileNode {
   id: string;
   name: string;
@@ -18,7 +36,7 @@ export interface EditorSettings {
   suggestions: boolean;
   emmet: boolean;
   liveEditing: boolean;
-  saveToRun: boolean;
+  runShortcut: string;
   fontSize: number;
   fontFamily: string;
   theme: string;
@@ -34,11 +52,30 @@ interface EditorState {
     window2Full: boolean;
     window3Full: boolean;
   };
+
+  // Terminal State
+  terminalTabs: TerminalTab[];
+  activeTerminalTabId: string | null;
+  floatingTerminals: FloatingTerminal[];
+
+  openTerminalTab: (id?: string) => void;
+  closeTerminalTab: (id: string) => void;
+  setActiveTerminalTab: (id: string) => void;
+  openFloatingTerminal: (tabId: string) => void;
+  closeFloatingTerminal: (windowId: string) => void;
+  updateFloatingTerminalPosition: (windowId: string, x: number, y: number) => void;
   showEditorSettings: boolean;
-  activeSidebarTab: 'explorer' | 'search' | 'github' | 'extensions' | 'settings' | 'environment';
+  runCounter: number;
+  incrementRunCounter: () => void;
+  activeSidebarTab: 'explorer' | 'search' | 'github' | 'extensions' | 'settings' | 'environment' | 'terminal';
   sidebarVisible: boolean;
   openFiles: string[];
   installedExtensions: string[];
+  pipPackages: Record<string, string[]>;
+  activeVenv: string | null;
+  setActiveVenv: (venv: string | null) => void;
+  addPipPackage: (pkg: string, venv?: string) => void;
+  removePipPackage: (pkg: string, venv?: string) => void;
   toggleExtension: (id: string) => void;
   isExtensionInstalled: (id: string) => boolean;
   setFiles: (files: FileNode[]) => void;
@@ -46,7 +83,7 @@ interface EditorState {
   openFile: (id: string) => void;
   closeFile: (id: string) => void;
   setShowEditorSettings: (show: boolean) => void;
-  setActiveSidebarTab: (tab: 'explorer' | 'search' | 'github' | 'extensions' | 'settings' | 'environment') => void;
+  setActiveSidebarTab: (tab: 'explorer' | 'search' | 'github' | 'extensions' | 'settings' | 'environment' | 'terminal') => void;
   updateFileContent: (id: string, content: string) => void;
   updateSettings: (settings: Partial<EditorSettings>) => void;
   toggleFullScreen: (
@@ -61,8 +98,8 @@ interface EditorState {
   renameNode: (id: string, newName: string) => void;
   moveNode: (draggedId: string, targetFolderId: string | null) => void;
   exportProjectZip: () => Promise<void>;
-  loadTemplate: (template: 'vanilla' | 'react' | 'vue' | 'typescript' | 'python' | 'nodejs') => void;
-  environment: 'vanilla' | 'react' | 'vue' | 'typescript' | 'python' | 'nodejs';
+  loadTemplate: (template: 'vanilla' | 'react' | 'vue' | 'typescript' | 'python' | 'nodejs' | 'cpp' | 'dart' | 'flutter' | 'webgl' | 'svg' | 'canvas' | 'c' | 'rust' | 'go' | 'ruby' | 'lua' | 'csharp' | 'blazor') => void;
+  environment: 'vanilla' | 'react' | 'vue' | 'typescript' | 'python' | 'nodejs' | 'cpp' | 'dart' | 'flutter' | 'webgl' | 'svg' | 'canvas' | 'c' | 'rust' | 'go' | 'ruby' | 'lua' | 'csharp' | 'blazor';
   devServerUrl: string | null;
   setDevServerUrl: (url: string | null) => void;
   // Multi-tab preview state — survives fullscreen remounts
@@ -99,7 +136,7 @@ const initialFiles: FileNode[] = [
     name: "index.html",
     language: "html",
     content:
-      '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>Document</title>\n</head>\n<body>\n  <h1>Hello Advanced Editor</h1>\n</body>\n</html>',
+      '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Document</title>\n  <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  <h1>Hello Advanced Editor</h1>\n  <script src="script.js"></script>\n</body>\n</html>',
     type: "file",
   },
   {
@@ -189,14 +226,14 @@ button:hover { background: #2f81f7; border-color: #2f81f7; }`
       name: 'main.py',
       language: 'python',
       type: 'file' as const,
-      content: `# Python runs in your browser via Skulpt (Python 3 subset)
-import datetime
+      content: `# Python runs in your browser via Pyodide (WebAssembly Full Python env)
+import sys
 
 def greet(name):
     return f"Hello, {name}! 🐍"
 
-result = greet("World")
-print(result)
+print(greet("World"))
+print(f"Python Version: {sys.version.split(' ')[0]}")
 
 for i in range(5):
     print(f"  {i+1}: {'*' * (i+1)}")
@@ -215,7 +252,7 @@ print("Python is running in the browser!")`
 <head>
   <meta charset="UTF-8">
   <title>Vue 3 App</title>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"><\/script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -228,7 +265,7 @@ print("Python is running in the browser!")`
       <li v-for="item in items" :key="item">{{ item }}</li>
     </ul>
   </div>
-  <script type="module" src="app.js"><\/script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>`
     },
@@ -356,6 +393,65 @@ async function fetchData() {
 fetchData().then(res => console.log('Async result:', JSON.stringify(res)));`
     }
   ],
+  cpp: [
+    {
+      id: 'cpp-1',
+      name: 'main.cpp',
+      language: 'cpp',
+      type: 'file' as const,
+      content: `#include <iostream>\n\nint main() {\n    std::cout << "Hello from C++ in Advanced Editor! 🚀" << std::endl;\n    return 0;\n}`
+    }
+  ],
+  dart: [
+    {
+      id: 'dart-1',
+      name: 'main.dart',
+      language: 'dart',
+      type: 'file' as const,
+      content: `void main() {\n  print('Hello from Dart in Advanced Editor! 🎯');\n  \n  for (int i = 1; i <= 5; i++) {\n    print('Count: $i');\n  }\n}`
+    }
+  ],
+  flutter: [
+    {
+      id: 'flutter-1',
+      name: 'main.dart',
+      language: 'dart',
+      type: 'file' as const,
+      content: `import 'package:flutter/material.dart';\n\nvoid main() {\n  runApp(const MyApp());\n}\n\nclass MyApp extends StatelessWidget {\n  const MyApp({super.key});\n  @override\n  Widget build(BuildContext context) {\n    return MaterialApp(\n      debugShowCheckedModeBanner: false,\n      theme: ThemeData.dark(),\n      home: Scaffold(\n        appBar: AppBar(title: const Text('Flutter Editor')),\n        body: const Center(child: Text('Hello Flutter!\\nRunning live via DartPad embed!\\n\\nTry changing this text.', textAlign: TextAlign.center)),\n      ),\n    );\n  }\n}`
+    }
+  ],
+  webgl: [
+    { id: 'wg-1', name: 'index.html', language: 'html', type: 'file' as const, content: `<!DOCTYPE html>\n<html>\n<head>\n  <style>body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; } canvas { width: 100%; height: 100%; }</style>\n</head>\n<body>\n  <canvas id="glcanvas"></canvas>\n  <script src="main.js"></script>\n</body>\n</html>` },
+    { id: 'wg-2', name: 'main.js', language: 'javascript', type: 'file' as const, content: `const canvas = document.querySelector("#glcanvas");\nconst gl = canvas.getContext("webgl");\n\nif (!gl) {\n  alert("Unable to initialize WebGL.");\n}\n\ngl.clearColor(0.0, 0.5, 1.0, 1.0);\ngl.clear(gl.COLOR_BUFFER_BIT);` }
+  ],
+  svg: [
+    { id: 'svg-1', name: 'index.html', language: 'html', type: 'file' as const, content: `<!DOCTYPE html>\n<html>\n<head>\n  <style>body { background: #0d1117; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }</style>\n</head>\n<body>\n  <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">\n    <circle cx="100" cy="100" r="80" stroke="#58a6ff" stroke-width="4" fill="#238636" />\n  </svg>\n</body>\n</html>` }
+  ],
+  canvas: [
+    { id: 'cvs-1', name: 'index.html', language: 'html', type: 'file' as const, content: `<!DOCTYPE html>\n<html>\n<head>\n  <style>body { margin: 0; background: #222; display: flex; justify-content: center; align-items: center; height: 100vh; } canvas { background: #fff; border-radius: 8px; }</style>\n</head>\n<body>\n  <canvas id="myCanvas" width="400" height="300"></canvas>\n  <script src="script.js"></script>\n</body>\n</html>` },
+    { id: 'cvs-2', name: 'script.js', language: 'javascript', type: 'file' as const, content: `const canvas = document.getElementById('myCanvas');\nconst ctx = canvas.getContext('2d');\n\nctx.fillStyle = '#ff6347';\nctx.fillRect(50, 50, 150, 100);\n\nctx.font = '30px Arial';\nctx.fillStyle = '#000';\nctx.fillText('Canvas 2D', 60, 110);` }
+  ],
+  c: [
+    { id: 'c-1', name: 'main.c', language: 'c', type: 'file' as const, content: `#include <stdio.h>\n\nint main() {\n    printf("Hello from C in Advanced Editor!\\n");\n    return 0;\n}` }
+  ],
+  rust: [
+    { id: 'rs-1', name: 'main.rs', language: 'rust', type: 'file' as const, content: `fn main() {\n    println!("Hello from Rust in Advanced Editor! 🦀");\n}` }
+  ],
+  go: [
+    { id: 'go-1', name: 'main.go', language: 'go', type: 'file' as const, content: `package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello from Go in Advanced Editor! 🐹")\n}` }
+  ],
+  ruby: [
+    { id: 'rb-1', name: 'main.rb', language: 'ruby', type: 'file' as const, content: `puts 'Hello from Ruby in Advanced Editor! 💎'` }
+  ],
+  lua: [
+    { id: 'lua-1', name: 'main.lua', language: 'lua', type: 'file' as const, content: `print("Hello from Lua in Advanced Editor!")` }
+  ],
+  csharp: [
+    { id: 'cs-1', name: 'Program.cs', language: 'csharp', type: 'file' as const, content: `using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello from C# in Advanced Editor!");\n    }\n}` }
+  ],
+  blazor: [
+    { id: 'blz-1', name: 'index.html', language: 'html', type: 'file' as const, content: `<!DOCTYPE html>\n<html>\n<head>\n  <style>body { background: #0d1117; color: #c9d1d9; font-family: system-ui; padding: 20px; }</style>\n</head>\n<body>\n  <h1>Blazor WebAssembly</h1>\n  <p style="color:#d29922">Note: Compiling C# Blazor purely in the browser requires downloading large .NET SDKs. To view Blazor projects, we recommend using <a href="https://blazorrepl.telerik.com/" target="_blank" style="color:#58a6ff">Blazor REPL</a> instead.</p>\n</body>\n</html>` }
+  ],
 };
 
 
@@ -374,6 +470,14 @@ async function recursivelyReadDirectory(directoryHandle: any, path: string = '')
         else if (entry.name.endsWith('.css')) lang = 'css';
         else if (entry.name.endsWith('.json')) lang = 'json';
         else if (entry.name.endsWith('.py')) lang = 'python';
+        else if (entry.name.endsWith('.cpp')) lang = 'cpp';
+        else if (entry.name.endsWith('.c')) lang = 'c';
+        else if (entry.name.endsWith('.dart')) lang = 'dart';
+        else if (entry.name.endsWith('.rs')) lang = 'rust';
+        else if (entry.name.endsWith('.go')) lang = 'go';
+        else if (entry.name.endsWith('.rb')) lang = 'ruby';
+        else if (entry.name.endsWith('.lua')) lang = 'lua';
+        else if (entry.name.endsWith('.cs')) lang = 'csharp';
 
         nodes.push({
           id: entryPath,
@@ -428,7 +532,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     suggestions: true,
     emmet: true,
     liveEditing: true,
-    saveToRun: false,
+    runShortcut: 'Ctrl+S',
     fontSize: 14,
     fontFamily: "Fira Code, Courier, monospace",
     theme: "vs-dark",
@@ -439,8 +543,77 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     window2Full: false,
     window3Full: false,
   },
+  
+  // Terminal
+  terminalTabs: [{ id: 'term-1', name: 'Terminal 1' }],
+  activeTerminalTabId: 'term-1',
+  floatingTerminals: [],
+
+  openTerminalTab: (id) => set((state) => {
+    const newId = id || `term-${Date.now()}`;
+    const newName = `Terminal ${state.terminalTabs.length + 1}`;
+    const exists = state.terminalTabs.find(t => t.id === newId);
+    if (!exists) {
+      return { 
+        terminalTabs: [...state.terminalTabs, { id: newId, name: newName }],
+        activeTerminalTabId: newId,
+        activeSidebarTab: 'terminal',
+        sidebarVisible: true
+      };
+    }
+    return { activeTerminalTabId: newId, activeSidebarTab: 'terminal', sidebarVisible: true };
+  }),
+  closeTerminalTab: (id) => set((state) => {
+    const newTabs = state.terminalTabs.filter(t => t.id !== id);
+    return {
+      terminalTabs: newTabs,
+      activeTerminalTabId: state.activeTerminalTabId === id ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null) : state.activeTerminalTabId
+    };
+  }),
+  setActiveTerminalTab: (id) => set({ activeTerminalTabId: id }),
+  openFloatingTerminal: (tabId) => set((state) => {
+    if (state.floatingTerminals.find(w => w.tabId === tabId)) return state;
+    return {
+      floatingTerminals: [
+        ...state.floatingTerminals,
+        {
+          id: `float-term-${Date.now()}`,
+          tabId,
+          x: 100 + (state.floatingTerminals.length * 20),
+          y: 100 + (state.floatingTerminals.length * 20),
+        }
+      ],
+      terminalTabs: state.terminalTabs.filter(t => t.id !== tabId),
+      activeTerminalTabId: state.activeTerminalTabId === tabId 
+        ? (state.terminalTabs.length > 1 ? state.terminalTabs.find(t => t.id !== tabId)?.id || null : null)
+        : state.activeTerminalTabId
+    };
+  }),
+  closeFloatingTerminal: (windowId) => set((state) => ({
+    floatingTerminals: state.floatingTerminals.filter(w => w.id !== windowId)
+  })),
+  updateFloatingTerminalPosition: (windowId, x, y) => set((state) => ({
+    floatingTerminals: state.floatingTerminals.map(w => w.id === windowId ? { ...w, x, y } : w)
+  })),
   installedExtensions: ['emmet', 'dracula'], // Pre-install emmet and dracula
+  pipPackages: { global: [] },
+  activeVenv: null,
+  setActiveVenv: (venv) => set({ activeVenv: venv }),
+  addPipPackage: (pkg, venv = 'global') => set((state) => ({
+    pipPackages: {
+      ...state.pipPackages,
+      [venv]: [...new Set([...(state.pipPackages[venv] || []), pkg])]
+    }
+  })),
+  removePipPackage: (pkg, venv = 'global') => set((state) => ({
+    pipPackages: {
+      ...state.pipPackages,
+      [venv]: (state.pipPackages[venv] || []).filter(p => p !== pkg)
+    }
+  })),
   showEditorSettings: false,
+  runCounter: 0,
+  incrementRunCounter: () => set((state) => ({ runCounter: state.runCounter + 1 })),
   activeSidebarTab: 'explorer',
   sidebarVisible: true,
   openFiles: ["1", "2", "3"],
@@ -771,7 +944,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   cloneGitHubRepo: async (repoUrl: string) => {
     // Parse a GitHub URL like https://github.com/owner/repo or owner/repo
-    const match = repoUrl.match(/(?:github\.com\/)([^\/]+)\/([^\/\s\.]+)/);
+    const match = repoUrl.match(/(?:github\.com\/)([^/]+)\/([^/\s.]+)/);
     if (!match) {
       alert('Invalid GitHub URL. Use format: https://github.com/owner/repo');
       return;

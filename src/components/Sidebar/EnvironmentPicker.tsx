@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useEditorStore } from '../../store/useEditorStore';
 
-type EnvId = 'vanilla' | 'react' | 'vue' | 'typescript' | 'python' | 'nodejs';
+type EnvId = 'vanilla' | 'react' | 'vue' | 'typescript' | 'python' | 'nodejs' | 'cpp' | 'dart' | 'flutter' | 'webgl' | 'svg' | 'canvas' | 'c' | 'rust' | 'go' | 'ruby' | 'lua' | 'csharp' | 'blazor';
 
 interface EnvCard {
     id: EnvId;
@@ -61,12 +61,86 @@ const environments: EnvCard[] = [
         description: 'JavaScript console / REPL environment',
         badge: 'Console',
     },
+    {
+        id: 'cpp',
+        label: 'C++',
+        icon: '⚙️',
+        color: '#00599c',
+        description: 'C++ compiled \u0026 run via Wandbox API',
+        badge: 'Wandbox API',
+    },
+    {
+        id: 'dart',
+        label: 'Dart',
+        icon: '🎯',
+        color: '#0175c2',
+        description: 'Dart CLI execution via DartPad Embed',
+        badge: 'DartPad',
+    },
+    {
+        id: 'flutter',
+        label: 'Flutter',
+        icon: '💙',
+        color: '#02569b',
+        description: 'Flutter UI live-rendered via DartPad embed',
+        badge: 'DartPad',
+    },
+    {
+        id: 'webgl', label: 'WebGL', icon: '🧊', color: '#990000',
+        description: 'Hardware-accelerated 3D graphics in browser', badge: 'DOM API',
+    },
+    {
+        id: 'canvas', label: 'Canvas 2D', icon: '🎨', color: '#ff4b4b',
+        description: '2D bitmap drawing and animation', badge: 'DOM API',
+    },
+    {
+        id: 'svg', label: 'SVG', icon: '📐', color: '#ffb13b',
+        description: 'Scalable Vector Graphics editing', badge: 'DOM API',
+    },
+    {
+        id: 'c', label: 'C', icon: '⚙️', color: '#a8b9cc',
+        description: 'C compiled \u0026 run via Wandbox API', badge: 'Wandbox API',
+    },
+    {
+        id: 'rust', label: 'Rust', icon: '🦀', color: '#dea584',
+        description: 'Rust compiled \u0026 run via Wandbox API', badge: 'Wandbox API',
+    },
+    {
+        id: 'go', label: 'Go', icon: '🐹', color: '#00add8',
+        description: 'Go execution via Wandbox API', badge: 'Wandbox API',
+    },
+    {
+        id: 'ruby', label: 'Ruby', icon: '💎', color: '#cc342d',
+        description: 'Ruby execution via Wandbox API', badge: 'Wandbox API',
+    },
+    {
+        id: 'lua', label: 'Lua', icon: '🌙', color: '#000080',
+        description: 'Lua execution via Wandbox API', badge: 'Wandbox API',
+    },
+    {
+        id: 'csharp', label: 'C# (.NET)', icon: '🟣', color: '#178600',
+        description: 'C# compiled \u0026 run via Wandbox API', badge: 'Wandbox API',
+    },
+    {
+        id: 'blazor', label: 'Blazor WASM', icon: '🔮', color: '#512bd4',
+        description: 'C# WebAssembly frontend development', badge: 'Warning',
+    },
 ];
 
 const limitations: Partial<Record<EnvId, string>> = {
     python: 'Standard library only (no pip). Uses Skulpt runtime.',
     nodejs: 'No File System / npm. Sandboxed JS engine with console output.',
     react: 'Uses UMD build — no import/export. Write in window scope.',
+    c: 'Execution requires internet connection (runs securely via Wandbox API).',
+    cpp: 'Execution requires internet connection (runs securely via Wandbox API).',
+    rust: 'Execution requires internet connection (runs securely via Wandbox API).',
+    go: 'Execution requires internet connection (runs securely via Wandbox API).',
+    ruby: 'Execution requires internet connection (runs securely via Wandbox API).',
+    lua: 'Execution requires internet connection (runs securely via Wandbox API).',
+    csharp: 'Execution requires internet connection (runs securely via Wandbox API).',
+    dart: 'Execution requires internet connection (runs securely via DartPad API).',
+    flutter: 'Compiles via DartPad iframe. Check network if it fails to load.',
+    blazor: 'Full in-browser compilation of Blazor apps requires gigabytes of .NET SDKs. True compilation is disabled here.',
 };
 
 export const EnvironmentPicker: React.FC = () => {

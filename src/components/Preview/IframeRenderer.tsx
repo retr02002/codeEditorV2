@@ -106,6 +106,7 @@ export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'prev
   .stderr { color: #f85149; }
   .info { color: #58a6ff; font-style: italic; }
 </style>
+${devToolsScript}
 </head>
 <body>
 <div id="header">🐍 Python — Skulpt Runtime</div>
@@ -138,7 +139,6 @@ Sk.misceval.asyncToPromise(() => Sk.importMainWithBody('<stdin>', false, code, t
   .then(() => append('\\n✓ Done', 'info'))
   .catch(e => append('Error: ' + e.toString(), 'stderr'));
 </script>
-${devToolsScript}
 </body>
 </html>`;
                 return;
@@ -168,6 +168,7 @@ ${devToolsScript}
   .sys { color: #6e7681; font-style: italic; font-size: 11px; }
   .sep { border: none; border-top: 1px solid #21262d; margin: 6px 0; }
 </style>
+${devToolsScript}
 </head>
 <body>
 <div id="header">🟢 Node.js — Browser Sandbox</div>
@@ -197,7 +198,6 @@ try {
   append('✓ Execution complete', 'sys');
 } catch(e) { append('Error: ' + e.message, 'error'); }
 </script>
-${devToolsScript}
 </body>
 </html>`;
                 return;
@@ -221,13 +221,13 @@ ${devToolsScript}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>${cssCode}</style>
+${devToolsScript}
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
 ${jsCode}
 </script>
-${devToolsScript}
 </body>
 </html>`;
                 return;
@@ -249,15 +249,168 @@ ${devToolsScript}
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <style>${cssCode}</style>
+${devToolsScript}
 </head>
 <body>
 <div id="app"></div>
 <script>
 ${jsCode}
 </script>
-${devToolsScript}
 </body>
 </html>`;
+                return;
+            }
+
+            // ── Wandbox API environments ─────────────────────────────────────────
+            const wandboxEnvs = ['c', 'cpp', 'rust', 'go', 'ruby', 'lua', 'csharp'];
+            if (wandboxEnvs.includes(environment)) {
+                let compilerName = 'gcc-head';
+                let fileExt = '.cpp';
+                let icon = '⚙️';
+                let label = 'Compiler';
+                
+                if (environment === 'c') { compilerName = 'gcc-13.2.0-c'; fileExt = '.c'; icon = '⚙️'; label = 'C'; }
+                if (environment === 'cpp') { compilerName = 'gcc-head'; fileExt = '.cpp'; icon = '⚙️'; label = 'C++'; }
+                if (environment === 'rust') { compilerName = 'rust-1.82.0'; fileExt = '.rs'; icon = '🦀'; label = 'Rust'; }
+                if (environment === 'go') { compilerName = 'go-1.23.2'; fileExt = '.go'; icon = '🐹'; label = 'Go'; }
+                if (environment === 'ruby') { compilerName = 'ruby-3.4.1'; fileExt = '.rb'; icon = '💎'; label = 'Ruby'; }
+                if (environment === 'lua') { compilerName = 'lua-5.4.7'; fileExt = '.lua'; icon = '🌙'; label = 'Lua'; }
+                if (environment === 'csharp') { compilerName = 'mono-6.12.0.199'; fileExt = '.cs'; icon = '🟣'; label = 'C# (.NET)'; }
+
+                const mainFile = allFiles.find(f => f.id === activeFileId && f.name.endsWith(fileExt))
+                    || allFiles.find(f => f.name.endsWith(fileExt))
+                    || allFiles[0];
+
+                const sourceCode = mainFile?.content || '';
+                const escaped = JSON.stringify(sourceCode);
+
+                iframe.removeAttribute('src'); // using srcdoc
+                iframe.srcdoc = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8">
+<style>
+  body { background: #0d1117; font-family: 'Fira Code', monospace; font-size: 13px; display: flex; flex-direction: column; height: 100vh; margin: 0; padding: 0; }
+  #header { background: #161b22; border-bottom: 1px solid #30363d; padding: 8px 14px; font-size: 11px; color: #a8b9cc; font-weight: 700; letter-spacing: 0.5px; }
+  #output { flex: 1; overflow-y: auto; padding: 14px; color: #c9d1d9; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+  .info { color: #58a6ff; font-style: italic; font-size: 12px; margin-bottom: 10px; }
+  .error { color: #f85149; }
+</style>
+</head>
+<body>
+<div id="header">${icon} ${label} — Wandbox API</div>
+<div id="output">
+  <div class="info" id="status">⏳ Sending code to Wandbox Compilation API...</div>
+</div>
+<script>
+  const out = document.getElementById('output');
+  const status = document.getElementById('status');
+  
+  let slowTimer = setTimeout(() => {
+     if(status) status.innerHTML = '⏳ Compiling... (Wandbox can sometimes take up to 10 seconds for safe execution if cold)';
+  }, 2500);
+
+  fetch('https://wandbox.org/api/compile.json', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      compiler: "${compilerName}",
+      code: ${escaped}
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+      clearTimeout(slowTimer);
+      if(status) status.remove();
+      if (data.status !== "0") {
+          out.innerHTML = '<span class="error">Compilation Error:\\n' + (data.compiler_error || data.program_error || 'Unknown Error') + '</span>';
+      } else {
+          out.textContent = data.program_output || data.compiler_message || '';
+          if (data.program_error) {
+              out.innerHTML += '\\n<span class="error">\\n' + data.program_error + '</span>';
+          }
+      }
+  })
+  .catch(err => {
+      clearTimeout(slowTimer);
+      if(status) status.remove();
+      out.innerHTML = '<span class="error">Network Error: ' + err.toString() + '</span>';
+  });
+</script>
+</body>
+</html>`;
+                return;
+            }
+
+            // ── Blazor fallback ───────────────────────────────────────────────
+            if (environment === 'blazor') {
+                iframe.removeAttribute('src'); // using srcdoc
+                iframe.srcdoc = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8">
+<style>
+  body { background: #0d1117; font-family: 'system-ui', sans-serif; font-size: 14px; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #c9d1d9; text-align: center; padding: 20px; }
+  .box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 30px; max-width: 500px; }
+  h2 { color: #a371f7; margin-top: 0; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>Blazor WASM</h2>
+  <p>In-browser compilation of full Blazor WebAssembly applications requires heavy .NET SDK downloads which are not optimal for this lightweight editor.</p>
+  <p>For full Blazor support, consider using a dedicated tool like <a href="https://blazorrepl.telerik.com" target="_blank" style="color:#58a6ff;">Blazor REPL</a>.</p>
+</div>
+</body>
+</html>`;
+                return;
+            }
+
+            // ── Dart CLI and Flutter Native React Embedding ──────────────────
+            if (environment === 'dart' || environment === 'flutter') {
+                const url = environment === 'dart' 
+                    ? 'https://dartpad.dev/embed-dart.html?theme=dark&run=true' 
+                    : 'https://dartpad.dev/embed-flutter.html?theme=dark&run=true';
+                
+                const activeFile = allFiles.find(f => f.id === activeFileId && f.name.endsWith('.dart'))
+                    || allFiles.find(f => f.name === 'main.dart')
+                    || allFiles.find(f => f.name.endsWith('.dart'));
+
+                const sourceCode = activeFile?.content || '';
+
+                // We load the DartPad iframe DIRECTLY into the main iframe block.
+                // This ensures e.source matches iframe.contentWindow exactly and has a valid origin to receive postMessage code!
+                iframe.removeAttribute('srcdoc');
+                if (iframe.src !== url) {
+                    iframe.src = url;
+                }
+
+                if ((window as any)._dartPadListener) {
+                    window.removeEventListener('message', (window as any)._dartPadListener);
+                }
+
+                const listener = (e: MessageEvent) => {
+                    if (e.data && e.data.type === 'ready') {
+                        iframe.contentWindow?.postMessage({
+                            type: 'sourceCode',
+                            sourceCode: {
+                                'main.dart': sourceCode
+                            }
+                        }, '*');
+                    }
+                };
+
+                (window as any)._dartPadListener = listener;
+                window.addEventListener('message', listener);
+
+                // Fallback in case the iframe was already loaded from a previous run and doesn't fire 'ready' again
+                if (iframe.contentWindow) {
+                    iframe.contentWindow.postMessage({
+                        type: 'sourceCode',
+                        sourceCode: {
+                            'main.dart': sourceCode
+                        }
+                    }, '*');
+                }
+
                 return;
             }
 
@@ -283,6 +436,7 @@ ${cssCode}
 #_ts_loading { position:fixed;top:0;left:0;right:0;background:#0f172a;color:#64748b;font:12px monospace;padding:8px 14px;z-index:99; }
 #_ts_err { background:#1e1b1b;color:#f87171;padding:14px;font:13px/1.6 monospace;white-space:pre-wrap;border-left:3px solid #ef4444;margin:12px; }
 </style>
+${devToolsScript}
 </head>
 <body>
 <div id="_ts_loading">⏳ Loading TypeScript compiler…</div>
@@ -318,13 +472,12 @@ try {
     document.body.appendChild(d);
 }
 </script>
-${devToolsScript}
 </body>
 </html>`;
                 return;
             }
 
-            // ── HTML / Vanilla — existing pipeline ───────────────────────────
+            // ── HTML / Vanilla / WebGL / SVG / Canvas ────────────────────────
             const htmlNode = allFiles.find(f => f.id === activeFileId && f.name.endsWith('.html'))
                 || allFiles.find(f => f.name === 'index.html')
                 || allFiles.find(f => f.name.endsWith('.html'));
@@ -368,7 +521,7 @@ ${devToolsScript}
                 let parsed = cssContent.replace(/@import\s+url\(['"]?([^)'"]+)['"]?\)\s*;/gi, (m: string, val: string) => {
                     if (val.startsWith('http') || val.startsWith('data:')) return m;
                     const absolutePath = resolvePath(val, cssDir);
-                    const targetFile = allFiles.find(f => f.id === absolutePath);
+                    const targetFile = allFiles.find(f => f.id === absolutePath || f.id === val || f.name === val.split('/').pop());
                     if (targetFile) return inlineCssImports(targetFile.content, targetFile.id, new Set(visited));
                     return m;
                 });
@@ -376,7 +529,7 @@ ${devToolsScript}
                 parsed = parsed.replace(/@import\s+["']([^"']+)["']\s*;/gi, (m: string, val: string) => {
                     if (val.startsWith('http') || val.startsWith('data:')) return m;
                     const absolutePath = resolvePath(val, cssDir);
-                    const targetFile = allFiles.find(f => f.id === absolutePath);
+                    const targetFile = allFiles.find(f => f.id === absolutePath || f.id === val || f.name === val.split('/').pop());
                     if (targetFile) return inlineCssImports(targetFile.content, targetFile.id, new Set(visited));
                     return m;
                 });
@@ -389,7 +542,7 @@ ${devToolsScript}
                 return cssContent.replace(/url\(['"]?([^)'"]+)['"]?\)/gi, (match, urlValue) => {
                     if (urlValue.startsWith('http') || urlValue.startsWith('data:')) return match;
                     const absolutePath = resolvePath(urlValue, cssDir);
-                    const targetFile = allFiles.find(f => f.id === absolutePath);
+                    const targetFile = allFiles.find(f => f.id === absolutePath || f.id === urlValue || f.name === urlValue.split('/').pop());
                     if (targetFile && blobMap.has(targetFile.id)) {
                         return `url("${blobMap.get(targetFile.id)}")`;
                     }
@@ -404,7 +557,7 @@ ${devToolsScript}
                 if (!isCss) return match;
 
                 const absolutePath = resolvePath(href, htmlPath);
-                const cssFile = allFiles.find(f => f.id === absolutePath);
+                const cssFile = allFiles.find(f => f.id === absolutePath || f.id === href || f.name === href.split('/').pop());
 
                 if (cssFile) {
                     let compiledCss = inlineCssImports(cssFile.content, cssFile.id);
@@ -419,7 +572,7 @@ ${devToolsScript}
                 (match: string, before: string = '', src: string, after: string = '') => {
                     if (src.startsWith('http')) return match;
                     const absolutePath = resolvePath(src, htmlPath);
-                    const jsFile = allFiles.find(f => f.id === absolutePath);
+                    const jsFile = allFiles.find(f => f.id === absolutePath || f.id === src || f.name === src.split('/').pop());
                     if (jsFile) {
                         const allAttrs = (before || '') + ' ' + (after || '');
                         const typeMatch = allAttrs.match(/type=["']([^"']+)["']/i);
@@ -438,7 +591,7 @@ ${devToolsScript}
                 if (val.startsWith('http') || val.startsWith('data:')) return match;
 
                 const absolutePath = resolvePath(val, htmlPath);
-                const targetFile = allFiles.find(f => f.id === absolutePath);
+                const targetFile = allFiles.find(f => f.id === absolutePath || f.id === val || f.name === val.split('/').pop());
 
                 if (targetFile && blobMap.has(targetFile.id)) {
                     return `${attr}="${blobMap.get(targetFile.id)}"`;
@@ -459,15 +612,12 @@ ${devToolsScript}
             const isFullDoc = /^\s*<!doctype\s+html/i.test(htmlFile);
 
             if (isFullDoc) {
-                // Inject bootstrap into <head> and eruda before </body>
+                // Inject eruda into <head> FIRST, and bootstrap into <head>
                 let doc = htmlFile;
-                if (bootstrapTag) {
-                    doc = doc.replace(/<\/head>/i, `${bootstrapTag}\n</head>`);
-                }
-                doc = doc.replace(/<\/body>/i, `${devToolsScript}\n</body>`);
+                doc = doc.replace(/<head>/i, `<head>\n${devToolsScript}\n${bootstrapTag}`);
                 finalDoc = doc;
             } else {
-                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${bootstrapTag}\n</head>\n<body>\n${htmlFile}\n${devToolsScript}\n</body>\n</html>`;
+                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${bootstrapTag}\n</head>\n<body>\n${htmlFile}\n</body>\n</html>`;
             }
 
             iframe.srcdoc = finalDoc;

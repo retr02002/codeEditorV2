@@ -8,19 +8,63 @@ import { Sidebar } from './components/Sidebar';
 import { EditorWorkspace } from './components/Editor';
 import { PreviewWindow } from './components/Preview';
 import { FloatingPreview } from './components/Preview/FloatingPreview';
+import { FloatingTerminal } from './components/Terminal/FloatingTerminal';
 
 function App() {
-  const { layout, toggleFullScreen, showEditorSettings, setShowEditorSettings, activeSidebarTab, setActiveSidebarTab, sidebarVisible, previewTabs, activePreviewTabId, floatingWindows, openFloatingWindow } = useEditorStore();
+  const { layout, toggleFullScreen, showEditorSettings, setShowEditorSettings, activeSidebarTab, setActiveSidebarTab, sidebarVisible, previewTabs, activePreviewTabId, floatingWindows, openFloatingWindow, floatingTerminals, openFloatingTerminal, activeTerminalTabId } = useEditorStore();
   const activePreviewTab = previewTabs.find(t => t.id === activePreviewTabId);
   const previewExternalUrl = activePreviewTab?.url ?? null;
   const [isMobile, setIsMobile] = useState(false);
-  const [activeMobileTab, setActiveMobileTab] = useState<'explorer' | 'search' | 'github' | 'extensions' | 'environment' | 'editor' | 'preview'>('editor');
+  const [activeMobileTab, setActiveMobileTab] = useState<'explorer' | 'search' | 'github' | 'extensions' | 'environment' | 'editor' | 'preview' | 'terminal'>('editor');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+        const settings = useEditorStore.getState().settings;
+        const shortcut = settings.runShortcut;
+        if (!shortcut || shortcut === 'None') return;
+
+        const parts = shortcut.split('+');
+        const needsCtrl = parts.includes('Ctrl');
+        const needsMeta = parts.includes('Meta');
+        const needsAlt = parts.includes('Alt');
+        const needsShift = parts.includes('Shift');
+        const keyPart = parts[parts.length - 1]; 
+
+        let pressedKey = e.key.toUpperCase();
+        if (pressedKey === ' ') pressedKey = 'SPACE';
+
+        if (
+            e.ctrlKey === needsCtrl &&
+            e.metaKey === needsMeta &&
+            e.altKey === needsAlt &&
+            e.shiftKey === needsShift &&
+            pressedKey === keyPart
+        ) {
+            e.preventDefault();
+            e.stopPropagation();
+            const event = new CustomEvent('run-code-shortcut');
+            window.dispatchEvent(event);
+
+            // Execute "Run Code" logic
+            const store = useEditorStore.getState();
+            store.incrementRunCounter();
+            
+            if (store.environment === 'python') {
+                store.openTerminalTab();
+            }
+        }
+    };
+    
+    // Use capture phase to intercept before Monaco Editor or browser defaults
+    window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true });
   }, []);
 
   const isAnyFullScreen = layout.window1Full || layout.window2Full || layout.window3Full;
@@ -66,6 +110,21 @@ function App() {
               </button>
             </>
           )}
+          {title === 'TERMINAL' && (
+            <>
+              {!isMobile && (
+                <button
+                  className="icon-btn"
+                  onClick={() => {
+                    if (activeTerminalTabId) openFloatingTerminal(activeTerminalTabId);
+                  }}
+                  title="Pop out active tab as window"
+                >
+                  <AppWindow size={15} />
+                </button>
+              )}
+            </>
+          )}
           {title === 'EDITOR' && (
             <button
               className="icon-btn"
@@ -89,21 +148,18 @@ function App() {
     return (
       <div className="mobile-layout">
         <div className="mobile-content">
-          {['explorer', 'search', 'github', 'extensions', 'environment'].includes(activeMobileTab) && (
-            <div className="panel full-screen-panel">
-              {renderPanelHeader(activeMobileTab.toUpperCase(), 'window1Full')}
+          {['explorer', 'search', 'github', 'extensions', 'environment', 'terminal'].includes(activeMobileTab) && (
+            <div className="panel full-screen-panel" style={{ borderTop: 'none', paddingTop: 0 }}>
               <Sidebar />
             </div>
           )}
           {activeMobileTab === 'editor' && (
-            <div className="panel full-screen-panel">
-              {renderPanelHeader('EDITOR', 'window2Full')}
+            <div className="panel full-screen-panel" style={{ borderTop: 'none', paddingTop: 0 }}>
               <EditorWorkspace />
             </div>
           )}
           {activeMobileTab === 'preview' && (
-            <div className="panel full-screen-panel">
-              {renderPanelHeader('PREVIEW', 'window3Full')}
+            <div className="panel full-screen-panel" style={{ borderTop: 'none', paddingTop: 0 }}>
               <PreviewWindow />
             </div>
           )}
@@ -117,6 +173,9 @@ function App() {
           </button>
           <button className={`mobile-tab ${activeMobileTab === 'environment' ? 'active' : ''}`} onClick={() => { setActiveMobileTab('environment'); setActiveSidebarTab('environment'); }}>
             <Layers size={18} /><span>Env</span>
+          </button>
+          <button className={`mobile-tab ${activeMobileTab === 'terminal' ? 'active' : ''}`} onClick={() => { setActiveMobileTab('terminal'); setActiveSidebarTab('terminal'); }}>
+            <Terminal size={18} /><span>Terminal</span>
           </button>
           <button className={`mobile-tab ${activeMobileTab === 'editor' ? 'active' : ''}`} onClick={() => setActiveMobileTab('editor')}>
             <Code2 size={18} /><span>Editor</span>
@@ -146,7 +205,7 @@ function App() {
             {/* Window 1 */}
             {sidebarVisible ? (
               <div className="panel">
-                {renderPanelHeader('SIDEBAR', 'window1Full')}
+                {renderPanelHeader(activeSidebarTab.toUpperCase(), 'window1Full')}
                 <Sidebar />
               </div>
             ) : (
@@ -170,7 +229,7 @@ function App() {
         {/* Render full-screen window if any is maximized */}
         {layout.window1Full && (
           <div className="panel full-screen-panel">
-            {renderPanelHeader('EXPLORER', 'window1Full')}
+            {renderPanelHeader(activeSidebarTab.toUpperCase(), 'window1Full')}
             <Sidebar />
           </div>
         )}
@@ -228,6 +287,23 @@ function App() {
               <Layers size={22} strokeWidth={1.5} />
             </div>
             <div
+              className={`activity-action ${activeSidebarTab === 'terminal' && sidebarVisible ? 'active' : ''}`}
+              onClick={() => {
+                if (!sidebarVisible || activeSidebarTab !== 'terminal') {
+                  useEditorStore.setState({ activeSidebarTab: 'terminal', sidebarVisible: true });
+                  const { terminalTabs, openTerminalTab } = useEditorStore.getState();
+                  if (terminalTabs.length === 0) {
+                     openTerminalTab();
+                  }
+                } else {
+                  useEditorStore.setState({ sidebarVisible: false });
+                }
+              }}
+              title="Terminal"
+            >
+              <Terminal size={22} strokeWidth={1.5} />
+            </div>
+            <div
               className={`activity-action`}
               onClick={() => useEditorStore.getState().exportProjectZip()}
               title="Download Project ZIP"
@@ -249,6 +325,15 @@ function App() {
       </div>
       {floatingWindows.map(w => (
         <FloatingPreview
+          key={w.id}
+          windowId={w.id}
+          tabId={w.tabId}
+          initialX={w.x}
+          initialY={w.y}
+        />
+      ))}
+      {floatingTerminals.map(w => (
+        <FloatingTerminal
           key={w.id}
           windowId={w.id}
           tabId={w.tabId}

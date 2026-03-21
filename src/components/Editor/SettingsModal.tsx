@@ -64,6 +64,40 @@ interface Props {
 
 export const SettingsModal: React.FC<Props> = ({ onClose }) => {
     const { settings, updateSettings } = useEditorStore();
+    const [isRecordingKey, setIsRecordingKey] = React.useState(false);
+
+    const handleKeyRecord = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (!isRecordingKey) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+
+        const key = e.key;
+        if (['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return;
+
+        // Check if there is a primary modifier (Ctrl, Alt, or Meta)
+        const hasPrimaryModifier = e.ctrlKey || e.altKey || e.metaKey;
+        const isCharOrNumber = /^[a-zA-Z0-9]$/.test(key);
+
+        // Exclude single typical keys without a strong modifier (preventing problem combinations inside editing mode)
+        if (isCharOrNumber && !hasPrimaryModifier) {
+            return;
+        }
+
+        const keys = [];
+        if (e.ctrlKey) keys.push('Ctrl');
+        if (e.metaKey) keys.push('Meta');
+        if (e.altKey) keys.push('Alt');
+        if (e.shiftKey) keys.push('Shift');
+        
+        let keyName = key.toUpperCase();
+        if (keyName === ' ') keyName = 'SPACE';
+
+        keys.push(keyName);
+        
+        updateSettings({ runShortcut: keys.join('+') });
+        setIsRecordingKey(false);
+    };
 
     return (
         <div className="settings-sidebar">
@@ -144,14 +178,32 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
                     Live Editing
                 </label>
 
-                <label className="setting-toggle">
-                    <input
-                        type="checkbox"
-                        checked={settings.saveToRun}
-                        onChange={(e) => updateSettings({ saveToRun: e.target.checked })}
-                    />
-                    Ctrl+S to Run Code
-                </label>
+                <div className="setting-group" style={{ marginTop: '16px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        Custom Run Shortcut
+                        <button 
+                            className="run-shortcut-input"
+                            style={{ 
+                                padding: '8px', 
+                                background: isRecordingKey ? 'var(--button-hover)' : 'var(--bg-lighter)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '4px',
+                                color: 'var(--text-color)',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                fontFamily: 'monospace'
+                            }}
+                            onClick={() => setIsRecordingKey(true)}
+                            onKeyDown={handleKeyRecord}
+                            onBlur={() => setIsRecordingKey(false)}
+                        >
+                            {isRecordingKey ? 'Press any combination (Esc to cancel)...' : (settings.runShortcut || 'None')}
+                        </button>
+                    </label>
+                    <small style={{ color: '#888', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                        Requires a modifier (Ctrl, Meta/Cmd, Alt) for normal keys to prevent editor conflicts.
+                    </small>
+                </div>
 
             </div>
         </div>

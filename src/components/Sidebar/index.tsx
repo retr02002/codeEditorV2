@@ -2,8 +2,8 @@ import React from 'react';
 import { Explorer } from './Explorer';
 import { GithubImporter } from './GithubImporter';
 import { Extensions } from './Extensions';
-import { TerminalPane } from './TerminalPane';
 import { EnvironmentPicker } from './EnvironmentPicker';
+import { TerminalWindow } from '../Terminal/TerminalWindow';
 import { useEditorStore } from '../../store/useEditorStore';
 import './Sidebar.css';
 
@@ -21,8 +21,8 @@ export const Sidebar: React.FC = () => {
                 {activeSidebarTab === 'environment' && <EnvironmentPicker />}
                 {activeSidebarTab === 'settings' && <div style={{ padding: 20, color: '#888' }}>Settings UI coming soon.</div>}
                 {activeSidebarTab === 'search' && <div style={{ padding: 20, color: '#888' }}>Global Search coming soon.</div>}
+                {activeSidebarTab === 'terminal' && <TerminalWindow />}
             </div>
-            <TerminalPane />
         </div>
     );
 };

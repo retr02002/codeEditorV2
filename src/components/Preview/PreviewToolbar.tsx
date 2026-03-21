@@ -68,7 +68,9 @@ export const PreviewToolbar: React.FC<Props> = ({ activeSize, onSizeChange, onRe
                     value={displayUrl}
                     onChange={e => setDraft(e.target.value)}
                     onKeyDown={e => {
-                        if (e.key === 'Enter') commit(draft ?? '');
+                        if (e.key === 'Enter') {
+                            commit(draft ?? '');
+                        }
                         if (e.key === 'Escape') { setDraft(null); onNavigate(''); }
                     }}
                     onFocus={e => { setDraft(e.target.value); e.target.select(); }}
