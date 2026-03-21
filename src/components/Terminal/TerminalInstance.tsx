@@ -36,7 +36,7 @@ function flattenFilesDetails(nodes: FileNode[]): FileNode[] {
 
 declare global {
     interface Window {
-        loadPyodide: (config: { indexURL: string }) => Promise<unknown>;
+        loadPyodide: (config: { indexURL: string }) => Promise<any>;
         pyodideInstance: unknown;
     }
 }
@@ -96,7 +96,7 @@ interface TerminalInstanceProps {
     isActive: boolean;
 }
 
-export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ id: _id, isActive }) => {
+export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ isActive }) => {
     const inputRef = useRef<HTMLInputElement>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const [lines, setLines] = useState<string[]>([
