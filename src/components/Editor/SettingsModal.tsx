@@ -63,8 +63,36 @@ interface Props {
 }
 
 export const SettingsModal: React.FC<Props> = ({ onClose }) => {
-    const { settings, updateSettings } = useEditorStore();
+    const { settings, updateSettings, environment, incrementRunCounter } = useEditorStore();
     const [isRecordingKey, setIsRecordingKey] = React.useState(false);
+
+    const handleHtmlModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const mode = e.target.value;
+        updateSettings({ htmlMode: mode });
+        const { files, updateFileContent } = useEditorStore.getState();
+        const htmlFile = files.find(f => f.name === 'index.html');
+        if (htmlFile) {
+            if (mode === 'Pug') updateFileContent(htmlFile.id, 'doctype html\nhtml\n  head\n    title Pug\n  body\n    h1 Hello Pug');
+            else if (mode === 'Markdown') updateFileContent(htmlFile.id, '# Hello Markdown\n\nThis is a markdown file.');
+            else if (mode === 'Haml') updateFileContent(htmlFile.id, '%html\n  %head\n    %title Haml\n  %body\n    %h1 Hello Haml');
+            else if (mode === 'Mustache') updateFileContent(htmlFile.id, '<h1>Hello Mustache</h1>');
+            else if (mode === 'EJS') updateFileContent(htmlFile.id, '<h1>Hello EJS</h1>');
+            else updateFileContent(htmlFile.id, '<!DOCTYPE html>\n<html>\n<body>\n  <h1>Hello HTML</h1>\n</body>\n</html>');
+        }
+        incrementRunCounter();
+    };
+
+    const handleCssModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const mode = e.target.value;
+        updateSettings({ cssMode: mode });
+        const { files, updateFileContent } = useEditorStore.getState();
+        const cssFile = files.find(f => f.name === 'styles.css');
+        if (cssFile) {
+            if (mode === 'SCSS' || mode === 'LESS') updateFileContent(cssFile.id, '$bg: #1e1e1e;\nbody {\n  background: $bg;\n  color: white;\n}');
+            else updateFileContent(cssFile.id, 'body {\n  background: #1e1e1e;\n  color: white;\n}');
+        }
+        incrementRunCounter();
+    };
 
     const handleKeyRecord = (e: React.KeyboardEvent<HTMLButtonElement>) => {
         if (!isRecordingKey) return;
@@ -139,17 +167,89 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
                     />
                 </div>
 
-                <div className="setting-group">
-                    <label>Bootstrap Version</label>
-                    <select value={settings.bootstrapVersion} onChange={(e) => updateSettings({ bootstrapVersion: e.target.value })}>
-                        <option value="none">None</option>
-                        <option value="5.3.0">Bootstrap 5.3.0</option>
-                        <option value="4.5.2">Bootstrap 4.5.2</option>
-                        <option value="3.4.1">Bootstrap 3.4.1</option>
-                    </select>
-                </div>
-
-                <hr style={{ borderColor: 'var(--border-color)' }} />
+                {environment === 'vanilla' && (
+                    <>
+                        <div className="setting-group">
+                            <label>Bootstrap Version</label>
+                            <select value={settings.bootstrapVersion} onChange={(e) => { updateSettings({ bootstrapVersion: e.target.value }); incrementRunCounter(); }}>
+                                <option value="none">None</option>
+                                <option value="5.3.0">Bootstrap 5.3.0</option>
+                                <option value="4.5.2">Bootstrap 4.5.2</option>
+                                <option value="3.4.1">Bootstrap 3.4.1</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>HTML Mode</label>
+                            <select value={settings.htmlMode} onChange={handleHtmlModeChange}>
+                                <option value="Normal">Normal</option>
+                                <option value="Pug">Pug</option>
+                                <option value="Markdown">Markdown</option>
+                                <option value="Haml">Haml</option>
+                                <option value="Mustache">Mustache</option>
+                                <option value="EJS">EJS</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>CSS Mode</label>
+                            <select value={settings.cssMode} onChange={handleCssModeChange}>
+                                <option value="CSS">CSS</option>
+                                <option value="SCSS">SCSS</option>
+                                <option value="LESS">LESS</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>JS Mode</label>
+                            <select value={settings.jsMode} onChange={(e) => { updateSettings({ jsMode: e.target.value }); incrementRunCounter(); }}>
+                                <option value="JavaScript">JavaScript</option>
+                                <option value="TypeScript">TypeScript</option>
+                                <option value="Babel">Babel</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>jQuery Version</label>
+                            <select value={settings.jquery} onChange={(e) => { updateSettings({ jquery: e.target.value }); incrementRunCounter(); }}>
+                                <option value="none">None</option>
+                                <option value="3.7.1">3.7.1</option>
+                                <option value="3.6.4">3.6.4</option>
+                                <option value="2.2.4">2.2.4</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>FontAwesome</label>
+                            <select value={settings.fontAwesome} onChange={(e) => { updateSettings({ fontAwesome: e.target.value }); incrementRunCounter(); }}>
+                                <option value="none">None</option>
+                                <option value="6.4.0">6.4.0</option>
+                                <option value="5.15.4">5.15.4</option>
+                                <option value="4.7.0">4.7.0</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>Iconify</label>
+                            <select value={settings.iconify} onChange={(e) => { updateSettings({ iconify: e.target.value }); incrementRunCounter(); }}>
+                                <option value="none">None</option>
+                                <option value="3.1.1">3.1.1</option>
+                                <option value="2.2.1">2.2.1</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>OwlCarousel</label>
+                            <select value={settings.owlCarousel} onChange={(e) => { updateSettings({ owlCarousel: e.target.value }); incrementRunCounter(); }}>
+                                <option value="none">None</option>
+                                <option value="2.3.4">2.3.4</option>
+                            </select>
+                        </div>
+                        <div className="setting-group">
+                            <label>Swiper JS</label>
+                            <select value={settings.swiper} onChange={(e) => { updateSettings({ swiper: e.target.value }); incrementRunCounter(); }}>
+                                <option value="none">None</option>
+                                <option value="11.0.5">11.0.5</option>
+                                <option value="10.3.1">10.3.1</option>
+                                <option value="9.4.1">9.4.1</option>
+                            </select>
+                        </div>
+                        <hr style={{ borderColor: 'var(--border-color)', margin: '12px 0' }} />
+                    </>
+                )}
 
                 <label className="setting-toggle">
                     <input

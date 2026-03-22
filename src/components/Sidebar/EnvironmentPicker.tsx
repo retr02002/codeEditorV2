@@ -50,8 +50,8 @@ const environments: EnvCard[] = [
         label: 'Python',
         icon: '🐍',
         color: '#ffd343',
-        description: 'Python 3 via Skulpt WASM — runs in preview',
-        badge: 'Skulpt WASM',
+        description: 'Python 3 via Pyodide WASM — runs in preview',
+        badge: 'Pyodide WASM',
     },
     {
         id: 'nodejs',
@@ -128,7 +128,7 @@ const environments: EnvCard[] = [
 ];
 
 const limitations: Partial<Record<EnvId, string>> = {
-    python: 'Standard library only (no pip). Uses Skulpt runtime.',
+    python: 'Supports pip packages. Uses Pyodide runtime.',
     nodejs: 'No File System / npm. Sandboxed JS engine with console output.',
     react: 'Uses UMD build — no import/export. Write in window scope.',
     c: 'Execution requires internet connection (runs securely via Wandbox API).',

@@ -126,13 +126,27 @@ function App() {
             </>
           )}
           {title === 'EDITOR' && (
-            <button
-              className="icon-btn"
-              onClick={() => setShowEditorSettings(!showEditorSettings)}
-              title="Editor Settings"
-            >
-              <Settings size={16} />
-            </button>
+            <>
+              <button
+                className="icon-btn run-btn"
+                onClick={() => {
+                  const store = useEditorStore.getState();
+                  store.incrementRunCounter();
+                  if (store.environment === 'python') store.openTerminalTab();
+                }}
+                title="Run Code"
+                style={{ color: '#4CAF50' }}
+              >
+                <Play size={16} />
+              </button>
+              <button
+                className="icon-btn"
+                onClick={() => setShowEditorSettings(!showEditorSettings)}
+                title="Editor Settings"
+              >
+                <Settings size={16} />
+              </button>
+            </>
           )}
           {!isMobile && (
             <button className="icon-btn" onClick={() => toggleFullScreen(windowKey)} title={isFull ? "Exit Full Screen" : "Maximize"}>

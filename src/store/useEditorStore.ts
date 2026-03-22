@@ -41,6 +41,14 @@ export interface EditorSettings {
   fontFamily: string;
   theme: string;
   bootstrapVersion: string;
+  htmlMode: string;
+  cssMode: string;
+  jsMode: string;
+  jquery: string;
+  fontAwesome: string;
+  iconify: string;
+  owlCarousel: string;
+  swiper: string;
 }
 
 interface EditorState {
@@ -531,12 +539,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   settings: {
     suggestions: true,
     emmet: true,
-    liveEditing: true,
+    liveEditing: false,
     runShortcut: 'Ctrl+S',
     fontSize: 14,
     fontFamily: "Fira Code, Courier, monospace",
     theme: "vs-dark",
     bootstrapVersion: "none",
+    htmlMode: "Normal",
+    cssMode: "CSS",
+    jsMode: "JavaScript",
+    jquery: "none",
+    fontAwesome: "none",
+    iconify: "none",
+    owlCarousel: "none",
+    swiper: "none",
   },
   layout: {
     window1Full: false,
@@ -789,13 +805,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     saveAs(content, 'project.zip');
   },
   loadTemplate: (template) =>
-    set(() => {
+    set((state) => {
       const payload = templates[template];
       return {
         files: payload,
         activeFileId: payload[0].id,
         openFiles: [payload[0].id],
         environment: template,
+        runCounter: state.runCounter + 1,
       };
     }),
   deleteNode: (id) =>
@@ -845,7 +862,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
   openFilePicker: async () => {
     if (!('showOpenFilePicker' in window)) {
-      alert("Your browser does not support the Local File System API. Please use Chrome or Edge Desktop.");
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.onchange = async () => {
+        const fileList = Array.from(input.files || []);
+        document.body.removeChild(input);
+        if (!fileList.length) return;
+        const file = fileList[0];
+        const isTxt = /\\.(txt|html|css|js|ts|json|md|csv|xml|svg|py)$/i.test(file.name);
+        let text = '';
+        try { if (isTxt) text = await file.text(); } catch (e) { /* binary */ }
+        
+        let lang = 'plaintext';
+        if (file.name.endsWith('.js') || file.name.endsWith('.ts')) lang = 'javascript';
+        else if (file.name.endsWith('.html')) lang = 'html';
+        else if (file.name.endsWith('.css')) lang = 'css';
+        else if (file.name.endsWith('.json')) lang = 'json';
+        else if (file.name.endsWith('.py')) lang = 'python';
+
+        const newNode: FileNode = {
+          id: `/${file.name}`,
+          name: file.name,
+          content: text,
+          language: lang,
+          type: "file",
+          fileObject: file
+        };
+        set((state) => ({
+          files: [...state.files, newNode],
+          activeFileId: newNode.id
+        }));
+      };
+      input.click();
       return;
     }
     try {

@@ -193,11 +193,20 @@ export const MonacoWrapper: React.FC = () => {
         return <div style={{ padding: 20, color: '#888' }}>Select a file to start editing</div>;
     }
 
+    let activeLanguage = activeFile.language;
+    if (activeFile.name === 'index.html' && settings.htmlMode !== 'Normal') {
+        activeLanguage = settings.htmlMode.toLowerCase();
+    } else if (activeFile.name === 'styles.css' && settings.cssMode !== 'CSS') {
+        activeLanguage = settings.cssMode.toLowerCase();
+    } else if (activeFile.name === 'script.js' && settings.jsMode === 'TypeScript') {
+        activeLanguage = 'typescript';
+    }
+
     return (
         <div style={{ width: '100%', height: '100%' }}>
             <Editor
                 height="100%"
-                language={activeFile.language}
+                language={activeLanguage}
                 theme={activeTheme}
                 value={activeFile.content}
                 onChange={(val) => { if (val !== undefined) updateFileContent(activeFileId!, val); }}

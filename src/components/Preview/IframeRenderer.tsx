@@ -6,10 +6,16 @@ interface IframeRendererProps {
 }
 
 export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'preview-iframe' }) => {
-    const { files, settings, activeFileId, environment, pipPackages, activeVenv } = useEditorStore();
+    const { files, settings, activeFileId, environment, pipPackages, activeVenv, runCounter } = useEditorStore();
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const prevCounterRef = useRef(runCounter);
 
     useEffect(() => {
+        if (!settings.liveEditing && runCounter === prevCounterRef.current) {
+            return;
+        }
+        prevCounterRef.current = runCounter;
+
         const renderContent = () => {
             const iframe = iframeRef.current;
             if (!iframe) return;
@@ -141,7 +147,31 @@ async function main() {
             await micropip.install(pipPkgs);
         }
 
+        const filesData = ${JSON.stringify(allFiles.map(f => ({ path: (f.id && f.id.startsWith('/') ? f.id : '/' + (f.id || f.name)), content: f.content })))};
+        filesData.forEach(f => {
+            if (f.content !== undefined && f.content !== null && f.content !== "") {
+                try {
+                    const parts = f.path.split('/');
+                    let curr = '';
+                    for (let i = 1; i < parts.length - 1; i++) {
+                        curr += '/' + parts[i];
+                        try { pyodide.FS.mkdir(curr); } catch(e) {}
+                    }
+                    pyodide.FS.writeFile(f.path, f.content);
+                    // Also write to the root for simplicity if it's a flat structure
+                    if (parts.length > 2) {
+                        try { pyodide.FS.writeFile('/' + parts[parts.length - 1], f.content); } catch(e) {}
+                    }
+                    // For paths without leading slash
+                    try { pyodide.FS.writeFile(f.path.replace(/^\\//, ''), f.content); } catch(e) {}
+                } catch(e) {
+                    console.error("Error writing file", f.path, e);
+                }
+            }
+        });
+
         append('▶ Running...', 'info');
+        try { pyodide.FS.chdir('/'); } catch(e) {}
         await pyodide.runPythonAsync(code);
         
         append('\\n✓ Done', 'info');
@@ -565,7 +595,7 @@ try {
             // 1. Inline CSS Files
             htmlFile = htmlFile.replace(/<link\s+[^>]*href=["']([^"']+)["'][^>]*>/gi, (match, href) => {
                 if (href.startsWith('http')) return match;
-                const isCss = match.toLowerCase().includes('stylesheet') || href.endsWith('.css');
+                const isCss = match.toLowerCase().includes('stylesheet') || href.endsWith('.css') || href.endsWith('.scss') || href.endsWith('.less');
                 if (!isCss) return match;
 
                 const absolutePath = resolvePath(href, htmlPath);
@@ -574,6 +604,11 @@ try {
                 if (cssFile) {
                     let compiledCss = inlineCssImports(cssFile.content, cssFile.id);
                     compiledCss = resolveCssUrl(compiledCss, cssFile.id);
+                    if (settings.cssMode === 'LESS' || href.endsWith('.less')) {
+                        return `<style type="text/less">\n${compiledCss}\n</style>`;
+                    } else if (settings.cssMode === 'SCSS' || href.endsWith('.scss')) {
+                        return `<style type="text/scss" class="scss-code">\n${compiledCss}\n</style>`;
+                    }
                     return `<style>\n${compiledCss}\n</style>`;
                 }
                 return match;
@@ -587,13 +622,19 @@ try {
                     const jsFile = allFiles.find(f => f.id === absolutePath || f.id === src || f.name === src.split('/').pop());
                     if (jsFile) {
                         const allAttrs = (before || '') + ' ' + (after || '');
-                        const typeMatch = allAttrs.match(/type=["']([^"']+)["']/i);
-                        const presetsMatch = allAttrs.match(/data-presets=["']([^"']+)["']/i);
-                        const dataTypeMatch = allAttrs.match(/data-type=["']([^"']+)["']/i);
-                        const typeAttr = typeMatch ? ` type="${typeMatch[1]}"` : '';
-                        const presetsAttr = presetsMatch ? ` data-presets="${presetsMatch[1]}"` : '';
-                        const dataTypeAttr = dataTypeMatch ? ` data-type="${dataTypeMatch[1]}"` : '';
-                        return `<script${typeAttr}${presetsAttr}${dataTypeAttr}>\n${jsFile.content}\n</script>`;
+                        let typeAttr = allAttrs.match(/type=["']([^"']+)["']/i)?.[0] || '';
+                        let presetsAttr = allAttrs.match(/data-presets=["']([^"']+)["']/i)?.[0] || '';
+                        const dataTypeAttr = allAttrs.match(/data-type=["']([^"']+)["']/i)?.[0] || '';
+                        
+                        if (settings.jsMode === 'Babel' || settings.jsMode === 'TypeScript' || src.endsWith('.ts') || src.endsWith('.jsx') || src.endsWith('.tsx')) {
+                            if (!typeAttr) typeAttr = 'type="text/babel"';
+                            if (!presetsAttr) {
+                                presetsAttr = (settings.jsMode === 'TypeScript' || src.endsWith('.ts') || src.endsWith('.tsx')) 
+                                    ? 'data-presets="env,typescript"' 
+                                    : 'data-presets="env,react"';
+                            }
+                        }
+                        return `<script ${typeAttr} ${presetsAttr} ${dataTypeAttr}>\n${jsFile.content}\n</script>`;
                     }
                     return match;
                 });
@@ -611,25 +652,84 @@ try {
                 return match;
             });
 
-            let bootstrapTag = '';
+            let extraTags = '';
+            
+            // UI Libraries
             if (settings.bootstrapVersion === '5.3.0') {
-                bootstrapTag = '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">';
+                extraTags += '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">\n';
             } else if (settings.bootstrapVersion === '4.5.2') {
-                bootstrapTag = '<link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">';
+                extraTags += '<link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">\n';
             } else if (settings.bootstrapVersion === '3.4.1') {
-                bootstrapTag = '<link href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet">';
+                extraTags += '<link href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet">\n';
+            }
+            if (settings.jquery) extraTags += '<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>\n';
+            if (settings.fontAwesome) extraTags += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">\n';
+            if (settings.iconify) extraTags += '<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>\n';
+            if (settings.owlCarousel) {
+                extraTags += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css">\n';
+                extraTags += '<script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>\n';
+            }
+
+            // Compilers
+            if (settings.htmlMode === 'Pug') {
+                extraTags += '<script src="https://pugjs.org/js/pug.js"></script>\n';
+            } else if (settings.htmlMode === 'Markdown') {
+                extraTags += '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>\n';
+            } else if (settings.htmlMode === 'Haml') {
+                extraTags += '<script src="https://cdnjs.cloudflare.com/ajax/libs/clientside-haml-js/5.4.0/haml.min.js"></script>\n';
+            } else if (settings.htmlMode === 'Mustache') {
+                extraTags += '<script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/4.2.0/mustache.min.js"></script>\n';
+            } else if (settings.htmlMode === 'EJS') {
+                extraTags += '<script src="https://cdn.jsdelivr.net/npm/ejs@3.1.9/ejs.min.js"></script>\n';
+            }
+
+            if (settings.cssMode === 'LESS' || htmlFile.includes('type="text/less"')) {
+                extraTags += '<script src="https://cdn.jsdelivr.net/npm/less"></script>\n';
+            }
+            if (settings.cssMode === 'SCSS' || htmlFile.includes('type="text/scss"')) {
+                extraTags += '<script src="https://unpkg.com/sass.js@0.11.1/dist/sass.sync.min.js"></script>\n';
+                extraTags += `<script>
+                    window.addEventListener('DOMContentLoaded', () => {
+                        if (typeof Sass !== 'undefined') {
+                            document.querySelectorAll('style.scss-code').forEach(el => {
+                                Sass.compile(el.textContent, result => {
+                                    if(result.status === 0) {
+                                        const style = document.createElement('style');
+                                        style.textContent = result.text;
+                                        document.head.appendChild(style);
+                                    } else { console.error('SCSS Error:', result.message); }
+                                });
+                            });
+                        }
+                    });
+                </script>\n`;
+            }
+            if (settings.jsMode === 'Babel' || settings.jsMode === 'TypeScript' || htmlFile.includes('type="text/babel"')) {
+                extraTags += '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>\n';
             }
 
             let finalDoc: string;
-            const isFullDoc = /^\s*<!doctype\s+html/i.test(htmlFile);
-
-            if (isFullDoc) {
-                // Inject eruda into <head> FIRST, and bootstrap into <head>
-                let doc = htmlFile;
-                doc = doc.replace(/<head>/i, `<head>\n${devToolsScript}\n${bootstrapTag}`);
-                finalDoc = doc;
+            const srcEscaped = htmlFile.replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script>/gi, '<\\/script>');
+            
+            if (settings.htmlMode === 'Pug') {
+                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${extraTags}\n</head>\n<body>\n<script>\ntry{ const src=\`${srcEscaped}\`; const html = typeof pug !== 'undefined' ? pug.render(src) : require('pug').render(src); document.write(html); }catch(e){console.error('Pug err:', e);}\n</script>\n</body>\n</html>`;
+            } else if (settings.htmlMode === 'Markdown') {
+                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${extraTags}\n</head>\n<body>\n<script>\ntry{ document.write(marked.parse(\`${srcEscaped}\`)); }catch(e){console.error('Markdown err:', e);}\n</script>\n</body>\n</html>`;
+            } else if (settings.htmlMode === 'Haml') {
+                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${extraTags}\n</head>\n<body>\n<script>\ntry{ document.write(haml.compileHaml({source: \`${srcEscaped}\`})()); }catch(e){console.error('Haml err:', e);}\n</script>\n</body>\n</html>`;
+            } else if (settings.htmlMode === 'Mustache') {
+                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${extraTags}\n</head>\n<body>\n<script>\ntry{ document.write(Mustache.render(\`${srcEscaped}\`, {})); }catch(e){console.error('Mustache err:', e);}\n</script>\n</body>\n</html>`;
+            } else if (settings.htmlMode === 'EJS') {
+                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${extraTags}\n</head>\n<body>\n<script>\ntry{ document.write(ejs.render(\`${srcEscaped}\`, {})); }catch(e){console.error('EJS err:', e);}\n</script>\n</body>\n</html>`;
             } else {
-                finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${bootstrapTag}\n</head>\n<body>\n${htmlFile}\n</body>\n</html>`;
+                const isFullDoc = /^\s*<!doctype\s+html/i.test(htmlFile);
+                if (isFullDoc) {
+                    let doc = htmlFile;
+                    doc = doc.replace(/<head>/i, `<head>\n${devToolsScript}\n${extraTags}`);
+                    finalDoc = doc;
+                } else {
+                    finalDoc = `<!DOCTYPE html>\n<html>\n<head>\n${devToolsScript}\n${extraTags}\n</head>\n<body>\n${htmlFile}\n</body>\n</html>`;
+                }
             }
 
             iframe.srcdoc = finalDoc;
@@ -637,7 +737,7 @@ try {
 
         const timeoutId = setTimeout(renderContent, 500);
         return () => clearTimeout(timeoutId);
-    }, [files, settings.bootstrapVersion, activeFileId, environment]);
+    }, [files, settings.bootstrapVersion, activeFileId, environment, settings.liveEditing, runCounter, activeVenv, pipPackages, settings.cssMode, settings.fontAwesome, settings.htmlMode, settings.iconify, settings.jquery, settings.jsMode, settings.owlCarousel]);
 
     return (
         <iframe
