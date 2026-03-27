@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useEditorStore } from '../../store/useEditorStore';
 import './Topbar.css';
+import logo from '../../assets/logo.png';
+
+// Custom events for tutorial triggers
+const dispatchTutorialEvent = (type: string) => {
+    window.dispatchEvent(new CustomEvent('tutorial-action', { detail: type }));
+};
 
 export const Topbar: React.FC = () => {
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -29,18 +35,19 @@ export const Topbar: React.FC = () => {
             toggleFullScreen('window1Full');
         } else if (action === 'togglePreview') {
             toggleFullScreen('window3Full');
+        } else if (action === 'interactiveGuide') {
+            dispatchTutorialEvent('interactive-guide');
+        } else if (action === 'featureOverview') {
+            dispatchTutorialEvent('feature-overview');
         } else {
             console.log(`Executing ${action}`);
         }
     };
 
     return (
-        <div className="topbar">
+        <div className="topbar" data-tutorial-id="topbar">
             <div className="topbar-logo">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="16 18 22 12 16 6"></polyline>
-                    <polyline points="8 6 2 12 8 18"></polyline>
-                </svg>
+                <img src={logo} alt="CodeSpace Logo" width="22" height="22" style={{ borderRadius: '4px' }} />
                 <span>CodeSpace</span>
             </div>
 
@@ -109,6 +116,25 @@ export const Topbar: React.FC = () => {
                             <button onClick={() => { useEditorStore.getState().loadTemplate('vanilla'); setActiveMenu(null); }}>Vanilla Web</button>
                             <button onClick={() => { useEditorStore.getState().loadTemplate('react'); setActiveMenu(null); }}>React Boilerplate</button>
                             <button onClick={() => { useEditorStore.getState().loadTemplate('python'); setActiveMenu(null); }}>Python (PyScript)</button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="menu-item-container">
+                    <button
+                        className={`menu-btn ${activeMenu === 'Tutorial' ? 'active' : ''}`}
+                        onClick={() => handleMenuClick('Tutorial')}
+                    >
+                        Tutorial
+                    </button>
+                    {activeMenu === 'Tutorial' && (
+                        <div className="dropdown-menu">
+                            <button onClick={() => handleAction('interactiveGuide')}>
+                                <span style={{ marginRight: 6 }}>🎯</span>Interactive Guide
+                            </button>
+                            <button onClick={() => handleAction('featureOverview')}>
+                                <span style={{ marginRight: 6 }}>📖</span>Feature Overview
+                            </button>
                         </div>
                     )}
                 </div>

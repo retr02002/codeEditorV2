@@ -46,7 +46,7 @@ export const PreviewToolbar: React.FC<Props> = ({ activeSize, onSizeChange, onRe
     };
 
     return (
-        <div className="preview-toolbar browser-toolbar">
+        <div className="preview-toolbar browser-toolbar" data-tutorial-id="preview-toolbar">
             <div className="browser-nav-btns">
                 <button
                     title="Back to project preview"

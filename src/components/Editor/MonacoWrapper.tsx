@@ -105,14 +105,16 @@ export const MonacoWrapper: React.FC = () => {
     useEffect(() => {
         if (!monaco) return;
 
+        const isInstalled = (id: string) => installedExtensions.some(ex => ex.id === id || ex.name.toLowerCase() === id.toLowerCase());
+
         // Emmet
-        if (installedExtensions.includes('emmet') && !emmetRegistered.current) {
+        if (isInstalled('emmet') && !emmetRegistered.current) {
             emmetHTML(monaco); emmetCSS(monaco); emmetJSX(monaco);
             emmetRegistered.current = true;
         }
 
         // Prettier
-        if (installedExtensions.includes('prettier') && !prettierProvider.current) {
+        if (isInstalled('prettier') && !prettierProvider.current) {
             const fp = {
                 provideDocumentFormattingEdits: async (model: any) => {
                     const text = model.getValue();
@@ -131,13 +133,13 @@ export const MonacoWrapper: React.FC = () => {
             prettierProvider.current = ['html', 'css', 'javascript', 'typescript'].map(l =>
                 monaco.languages.registerDocumentFormattingEditProvider(l, fp)
             );
-        } else if (!installedExtensions.includes('prettier') && prettierProvider.current) {
+        } else if (!isInstalled('prettier') && prettierProvider.current) {
             prettierProvider.current.forEach((d: any) => d.dispose());
             prettierProvider.current = null;
         }
 
         // Python IntelliSense
-        if (installedExtensions.includes('python') && !pythonProvider.current) {
+        if (isInstalled('python') && !pythonProvider.current) {
             pythonProvider.current = monaco.languages.registerCompletionItemProvider('python', {
                 provideCompletionItems: (model: any, position: any) => {
                     const word = model.getWordUntilPosition(position);
@@ -154,12 +156,12 @@ export const MonacoWrapper: React.FC = () => {
                     };
                 }
             });
-        } else if (!installedExtensions.includes('python') && pythonProvider.current) {
+        } else if (!isInstalled('python') && pythonProvider.current) {
             pythonProvider.current.dispose(); pythonProvider.current = null;
         }
 
         // Angular IntelliSense
-        if (installedExtensions.includes('angular') && !angularProvider.current) {
+        if (isInstalled('angular') && !angularProvider.current) {
             angularProvider.current = monaco.languages.registerCompletionItemProvider('html', {
                 provideCompletionItems: (model: any, position: any) => {
                     const word = model.getWordUntilPosition(position);
@@ -176,14 +178,14 @@ export const MonacoWrapper: React.FC = () => {
                     };
                 }
             });
-        } else if (!installedExtensions.includes('angular') && angularProvider.current) {
+        } else if (!isInstalled('angular') && angularProvider.current) {
             angularProvider.current.dispose(); angularProvider.current = null;
         }
 
         // Bootstrap 5 Class Completions (context-aware inside class="...")
-        if (installedExtensions.includes('bootstrap-snippets') && !bootstrapProvider.current) {
+        if (isInstalled('bootstrap-snippets') && !bootstrapProvider.current) {
             bootstrapProvider.current = registerBootstrapCompletions(monaco);
-        } else if (!installedExtensions.includes('bootstrap-snippets') && bootstrapProvider.current) {
+        } else if (!isInstalled('bootstrap-snippets') && bootstrapProvider.current) {
             bootstrapProvider.current.dispose(); bootstrapProvider.current = null;
         }
 

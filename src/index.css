@@ -234,6 +234,20 @@ body {
   display: none !important;
 }
 
+/* Fullscreen overlay — same component instance, just positioned on top */
+.panel-fullscreen-overlay {
+  position: fixed !important;
+  top: 38px; /* below topbar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100% !important;
+  height: calc(100vh - 38px) !important;
+  z-index: 100;
+  background-color: var(--panel-inner-bg);
+}
+
+/* Legacy full-screen class for mobile layout */
 .full-screen-panel {
   width: 100% !important;
   height: 100% !important;

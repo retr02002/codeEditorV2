@@ -1,0 +1,245 @@
+/* ── Tutorial Modal ────────────────────────────── */
+
+.tutorial-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(6px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.tutorial-modal {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
+    animation: modalSlideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.tutorial-modal-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: none;
+    color: #6e7681;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    z-index: 2;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+}
+
+.tutorial-modal-close:hover {
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+}
+
+/* ── Content ─────────────────────────────────── */
+
+.tutorial-modal-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.tutorial-modal-visual {
+    padding: 36px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+}
+
+.tutorial-modal-icon {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tutorial-modal-step-indicator {
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+.tutorial-modal-text {
+    padding: 0 28px 20px;
+}
+
+.tutorial-modal-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f0f6fc;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.tutorial-modal-desc {
+    font-size: 14px;
+    color: #8b949e;
+    line-height: 1.6;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.tutorial-modal-features {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.tutorial-modal-features li {
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    font-size: 13px;
+    color: #c9d1d9;
+    border-left: 3px solid;
+    transition: all 0.15s;
+}
+
+.tutorial-modal-features li:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Navigation ──────────────────────────────── */
+
+.tutorial-modal-nav {
+    padding: 16px 28px 20px;
+    border-top: 1px solid #21262d;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.tutorial-modal-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+
+.tutorial-modal-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #30363d;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.2s;
+}
+
+.tutorial-modal-dot.active {
+    width: 20px;
+    border-radius: 4px;
+}
+
+.tutorial-modal-btns {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.tutorial-modal-btn-prev {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+
+.tutorial-modal-btn-prev:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.tutorial-modal-btn-prev:not(:disabled):hover {
+    background: #30363d;
+}
+
+.tutorial-modal-btn-next {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.15s;
+    margin-left: auto;
+}
+
+.tutorial-modal-btn-next:hover {
+    filter: brightness(1.1);
+}
+
+/* ── Mobile ──────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .tutorial-modal {
+        max-width: 100%;
+        max-height: 85vh;
+        border-radius: 16px 16px 0 0;
+    }
+
+    .tutorial-modal-text {
+        padding: 0 16px 16px;
+    }
+
+    .tutorial-modal-features {
+        grid-template-columns: 1fr;
+    }
+
+    .tutorial-modal-title {
+        font-size: 18px;
+    }
+}

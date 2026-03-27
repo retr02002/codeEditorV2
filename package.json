@@ -1,5 +1,5 @@
 {
-  "name": "codeeditorv2",
+  "name": "codespace",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@xterm/addon-fit": "^0.11.0",
     "emmet-monaco-es": "^5.7.0",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",

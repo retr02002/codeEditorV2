@@ -52,7 +52,7 @@ export const PreviewWindow: React.FC = () => {
                     style={{
                         width: getWidth(),
                         height: getHeight(),
-                        transition: 'width 0.3s ease, height 0.3s ease'
+                        transition: 'width 0.3s ease, height 0.3s ease',
                     }}
                 >
                     {activeTab.url ? (

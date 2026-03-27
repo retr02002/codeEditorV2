@@ -8,13 +8,14 @@ interface IframeRendererProps {
 export const IframeRenderer: React.FC<IframeRendererProps> = ({ iframeId = 'preview-iframe' }) => {
     const { files, settings, activeFileId, environment, pipPackages, activeVenv, runCounter } = useEditorStore();
     const iframeRef = useRef<HTMLIFrameElement>(null);
-    const prevCounterRef = useRef(runCounter);
+    const prevCounterRef = useRef(-1);
+    const hasMountedRef = useRef(false);
 
     useEffect(() => {
-        if (!settings.liveEditing && runCounter === prevCounterRef.current) {
+        // Always render on first mount; after that, only when runCounter changes or liveEditing is on
+        if (hasMountedRef.current && !settings.liveEditing && runCounter === prevCounterRef.current) {
             return;
         }
-        prevCounterRef.current = runCounter;
 
         const renderContent = () => {
             const iframe = iframeRef.current;
@@ -735,7 +736,11 @@ try {
             iframe.srcdoc = finalDoc;
         };
 
-        const timeoutId = setTimeout(renderContent, 500);
+        const timeoutId = setTimeout(() => {
+            renderContent();
+            hasMountedRef.current = true;
+            prevCounterRef.current = runCounter;
+        }, 50);
         return () => clearTimeout(timeoutId);
     }, [files, settings.bootstrapVersion, activeFileId, environment, settings.liveEditing, runCounter, activeVenv, pipPackages, settings.cssMode, settings.fontAwesome, settings.htmlMode, settings.iconify, settings.jquery, settings.jsMode, settings.owlCarousel]);
 

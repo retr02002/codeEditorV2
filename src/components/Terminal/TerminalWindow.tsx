@@ -17,7 +17,7 @@ export const TerminalWindow: React.FC = () => {
     }
 
     return (
-        <div className="terminal-window">
+        <div className="terminal-window" data-tutorial-id="terminal">
             <TerminalTabBar />
             <div className="terminal-instances-container">
                 {terminalTabs.map(tab => (

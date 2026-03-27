@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { create } from "zustand";
+import { persist, createJSONStorage } from 'zustand/middleware';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -10,9 +11,12 @@ export interface FloatingWindow {
   y: number;
 }
 
+export type ShellType = 'bash' | 'zsh' | 'sh' | 'node' | 'python';
+
 export interface TerminalTab {
   id: string;
   name: string;
+  shellType: ShellType;
 }
 
 export interface FloatingTerminal {
@@ -30,6 +34,16 @@ export interface FileNode {
   children?: FileNode[];
   fileObject?: File;
   remoteUrl?: string; // used for GitHub-cloned binary assets (images, fonts, etc.)
+}
+
+export interface InstalledExtension {
+  id: string;         // namespace.name (e.g. "esbenp.prettier-vscode")
+  name: string;
+  namespace: string;
+  displayName: string;
+  description: string;
+  version: string;
+  iconUrl?: string;
 }
 
 export interface EditorSettings {
@@ -51,7 +65,7 @@ export interface EditorSettings {
   swiper: string;
 }
 
-interface EditorState {
+export interface EditorState {
   files: FileNode[];
   activeFileId: string | null;
   settings: EditorSettings;
@@ -66,7 +80,7 @@ interface EditorState {
   activeTerminalTabId: string | null;
   floatingTerminals: FloatingTerminal[];
 
-  openTerminalTab: (id?: string) => void;
+  openTerminalTab: (id?: string, shellType?: ShellType) => void;
   closeTerminalTab: (id: string) => void;
   setActiveTerminalTab: (id: string) => void;
   openFloatingTerminal: (tabId: string) => void;
@@ -78,12 +92,15 @@ interface EditorState {
   activeSidebarTab: 'explorer' | 'search' | 'github' | 'extensions' | 'settings' | 'environment' | 'terminal';
   sidebarVisible: boolean;
   openFiles: string[];
-  installedExtensions: string[];
+  installedExtensions: InstalledExtension[];
   pipPackages: Record<string, string[]>;
   activeVenv: string | null;
   setActiveVenv: (venv: string | null) => void;
   addPipPackage: (pkg: string, venv?: string) => void;
   removePipPackage: (pkg: string, venv?: string) => void;
+  toggleSidebar: () => void;
+  installExtension: (ext: InstalledExtension) => void;
+  uninstallExtension: (id: string) => void;
   toggleExtension: (id: string) => void;
   isExtensionInstalled: (id: string) => boolean;
   setFiles: (files: FileNode[]) => void;
@@ -151,7 +168,7 @@ const initialFiles: FileNode[] = [
     id: "2",
     name: "styles.css",
     language: "css",
-    content: "body {\n  background-color: var(--bg-color);\n  color: #fff;\n}",
+    content: "",
     type: "file",
   },
   {
@@ -528,7 +545,9 @@ export const findNodeById = (nodes: FileNode[], id: string | null): FileNode | u
   return undefined;
 };
 
-export const useEditorStore = create<EditorState>((set, get) => ({
+export const useEditorStore = create<EditorState>()(
+  persist(
+    (set, get) => ({
   files: initialFiles,
   activeFileId: "1",
   environment: 'vanilla' as const,
@@ -561,17 +580,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   
   // Terminal
-  terminalTabs: [{ id: 'term-1', name: 'Terminal 1' }],
+  terminalTabs: [{ id: 'term-1', name: 'Terminal 1', shellType: 'bash' as ShellType }],
   activeTerminalTabId: 'term-1',
   floatingTerminals: [],
 
-  openTerminalTab: (id) => set((state) => {
+  openTerminalTab: (id, shellType = 'bash') => set((state) => {
     const newId = id || `term-${Date.now()}`;
-    const newName = `Terminal ${state.terminalTabs.length + 1}`;
     const exists = state.terminalTabs.find(t => t.id === newId);
     if (!exists) {
+      const newName = `Terminal ${state.terminalTabs.length + 1}`;
       return { 
-        terminalTabs: [...state.terminalTabs, { id: newId, name: newName }],
+        terminalTabs: [...state.terminalTabs, { id: newId, name: newName, shellType }],
         activeTerminalTabId: newId,
         activeSidebarTab: 'terminal',
         sidebarVisible: true
@@ -611,24 +630,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   updateFloatingTerminalPosition: (windowId, x, y) => set((state) => ({
     floatingTerminals: state.floatingTerminals.map(w => w.id === windowId ? { ...w, x, y } : w)
   })),
-  installedExtensions: ['emmet', 'dracula'], // Pre-install emmet and dracula
+  installedExtensions: [
+    { id: 'emmet', name: 'emmet', namespace: 'builtin', displayName: 'Emmet', description: 'HTML/CSS abbreviations', version: '1.0.0' },
+    { id: 'dracula', name: 'dracula', namespace: 'builtin', displayName: 'Dracula Official', description: 'Official Dracula dark theme', version: '1.0.0' },
+  ] as InstalledExtension[],
   pipPackages: { global: [] },
   activeVenv: null,
   setActiveVenv: (venv) => set({ activeVenv: venv }),
-  addPipPackage: (pkg, venv = 'global') => set((state) => ({
+  addPipPackage: (pkg: string, venv: string = 'global') => set((state) => ({
     pipPackages: {
       ...state.pipPackages,
       [venv]: [...new Set([...(state.pipPackages[venv] || []), pkg])]
     }
   })),
-  removePipPackage: (pkg, venv = 'global') => set((state) => ({
+  removePipPackage: (pkg: string, venv: string = 'global') => set((state) => ({
     pipPackages: {
       ...state.pipPackages,
       [venv]: (state.pipPackages[venv] || []).filter(p => p !== pkg)
     }
   })),
+  toggleSidebar: () => set((state) => ({ sidebarVisible: !state.sidebarVisible })),
   showEditorSettings: false,
-  runCounter: 0,
+  runCounter: 1,
   incrementRunCounter: () => set((state) => ({ runCounter: state.runCounter + 1 })),
   activeSidebarTab: 'explorer',
   sidebarVisible: true,
@@ -694,12 +717,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     return { activeSidebarTab: tab, sidebarVisible: true };
   }),
-  toggleExtension: (id: string) => set(state => ({
-    installedExtensions: state.installedExtensions.includes(id)
-      ? state.installedExtensions.filter(e => e !== id)
-      : [...state.installedExtensions, id]
+  installExtension: (ext: InstalledExtension) => set(state => {
+    if (state.installedExtensions.some(e => e.id === ext.id)) return state;
+    return { installedExtensions: [...state.installedExtensions, ext] };
+  }),
+  uninstallExtension: (id: string) => set(state => ({
+    installedExtensions: state.installedExtensions.filter(e => e.id !== id)
   })),
-  isExtensionInstalled: (id: string) => get().installedExtensions.includes(id),
+  toggleExtension: (id: string) => set(state => {
+    const exists = state.installedExtensions.some(e => e.id === id);
+    if (exists) return { installedExtensions: state.installedExtensions.filter(e => e.id !== id) };
+    // For legacy string-based toggle, create a minimal entry
+    return { installedExtensions: [...state.installedExtensions, { id, name: id, namespace: 'builtin', displayName: id, description: '', version: '1.0.0' }] };
+  }),
+  isExtensionInstalled: (id: string) => get().installedExtensions.some(e => e.id === id),
   updateFileContent: (id, content) =>
     set((state) => {
       const deepUpdate = (nodes: FileNode[]): FileNode[] => {
@@ -1077,4 +1108,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       alert(`Failed to clone repository: ${err.message}`);
     }
   },
-}));
+}), {
+    name: 'editor-storage',
+    storage: createJSONStorage(() => localStorage),
+    partialize: (state) => ({
+      settings: state.settings,
+      terminalTabs: state.terminalTabs,
+      activeTerminalTabId: state.activeTerminalTabId,
+      environment: state.environment,
+      pipPackages: state.pipPackages,
+      activeVenv: state.activeVenv,
+      // We don't persist 'files' here as they are large, but you might want to if tiny.
+      // For now let's keep it simple.
+    }),
+  })
+);

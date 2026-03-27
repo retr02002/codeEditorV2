@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Proxy Open VSX API calls (must come before SPA fallback)
+[[redirects]]
+  from = "/openvsx-api/*"
+  to = "https://open-vsx.org/:splat"
+  status = 200
+  force = true
+
 # SPA fallback — serve index.html for all routes so React Router works
 [[redirects]]
   from = "/*"

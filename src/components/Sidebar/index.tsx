@@ -18,7 +18,7 @@ export const Sidebar: React.FC = () => {
                 {activeSidebarTab === 'explorer' && <Explorer />}
                 {activeSidebarTab === 'github' && <GithubImporter />}
                 {activeSidebarTab === 'extensions' && <Extensions />}
-                {activeSidebarTab === 'environment' && <EnvironmentPicker />}
+                {activeSidebarTab === 'environment' && <div data-tutorial-id="env-tab"><EnvironmentPicker /></div>}
                 {activeSidebarTab === 'settings' && <div style={{ padding: 20, color: '#888' }}>Settings UI coming soon.</div>}
                 {activeSidebarTab === 'search' && <div style={{ padding: 20, color: '#888' }}>Global Search coming soon.</div>}
                 {activeSidebarTab === 'terminal' && <TerminalWindow />}

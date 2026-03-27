@@ -1,20 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-// import { Terminal } from 'lucide-react';
-import { useEditorStore, type FileNode } from '../../store/useEditorStore';
-
-// ANSI color helpers
-const C = {
-    reset: '\x1b[0m',
-    bold: '\x1b[1m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    blue: '\x1b[34m',
-    cyan: '\x1b[36m',
-    red: '\x1b[31m',
-    gray: '\x1b[90m',
-    white: '\x1b[97m',
-    brightGreen: '\x1b[92m',
-};
+import React, { useEffect, useRef, useCallback } from 'react';
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import 'xterm/css/xterm.css';
+import { useEditorStore, type FileNode, type ShellType } from '../../store/useEditorStore';
 
 function flattenFiles(nodes: FileNode[]): string[] {
     const result: string[] = [];
@@ -36,6 +24,7 @@ function flattenFilesDetails(nodes: FileNode[]): FileNode[] {
 
 declare global {
     interface Window {
+        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
         loadPyodide: (config: { indexURL: string }) => Promise<any>;
         pyodideInstance: unknown;
     }
@@ -58,329 +47,290 @@ async function getPyodide() {
     return pyodide;
 }
 
-// Minimal ANSI → HTML converter
-function ansiToHtml(text: string): string {
-    const map: Record<string, string> = {
-        '0': 'color:inherit;font-weight:normal',
-        '1': 'font-weight:bold',
-        '31': 'color:#f85149',
-        '32': 'color:#3fb950',
-        '33': 'color:#d29922',
-        '34': 'color:#58a6ff',
-        '36': 'color:#39c5cf',
-        '37': 'color:#c9d1d9',
-        '90': 'color:#6e7681',
-        '92': 'color:#56d364',
-        '97': 'color:#f0f6fc',
-    };
-    // Use unicode escape \u001b to avoid control-character lint error
-    const ESC = '\u001b';
-    const ansiRe = new RegExp(ESC + '\\[([0-9;]+)m', 'g');
-    let html = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    html = html.replace(ansiRe, (_: string, codes: string) => {
-        const parts = codes.split(';');
-        const styles = parts.map((c: string) => map[c] || '').filter(Boolean).join(';');
-        return styles ? `<span style="${styles}">` : '</span>';
-    });
-    const opens = (html.match(/<span/g) || []).length;
-    const closes = (html.match(/<\/span>/g) || []).length;
-    html += '</span>'.repeat(Math.max(0, opens - closes));
-    return html;
-}
+const SHELL_PROMPTS: Record<ShellType, (cwd: string, branch: string, venv: string | null) => string> = {
+    bash: (cwd, branch, venv) => `${venv ? `(${venv}) ` : ''}\x1b[32m${cwd}\x1b[0m \x1b[34m(${branch})\x1b[0m \x1b[97m$\x1b[0m `,
+    zsh: (cwd, _branch, venv) => `${venv ? `\x1b[36m(${venv})\x1b[0m ` : ''}\x1b[32m${cwd}\x1b[0m \x1b[33m❯\x1b[0m `,
+    sh: (cwd, _branch, venv) => `${venv ? `(${venv}) ` : ''}${cwd} $ `,
+    node: () => `\x1b[32m>\x1b[0m `,
+    python: () => `\x1b[33m>>>\x1b[0m `,
+};
 
 interface TerminalInstanceProps {
     id: string;
     isActive: boolean;
 }
 
-export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ isActive }) => {
-    const inputRef = useRef<HTMLInputElement>(null);
-    const bottomRef = useRef<HTMLDivElement>(null);
-    const [lines, setLines] = useState<string[]>([
-        `${C.brightGreen}${C.bold}Welcome to CodeSpace Terminal${C.reset}`,
-        `${C.gray}Type ${C.cyan}help${C.reset}${C.gray} for available commands.${C.reset}`,
-        '',
-    ]);
-    const [inputVal, setInputVal] = useState('');
-    const [history, setHistory] = useState<string[]>([]);
-    // useRef: histIdx only tracks arrow-key position, never drives renders
-    const histIdx = useRef(-1);
-    const [cwd, setCwd] = useState('~/project');
-    const [branch, setBranch] = useState('main');
-    const [stagedFiles, setStagedFiles] = useState<string[]>([]);
-    const [commits, setCommits] = useState<{ hash: string; msg: string; date: string }[]>([]);
+export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ id, isActive }) => {
+    const termRef = useRef<HTMLDivElement>(null);
+    const xtermRef = useRef<Terminal | null>(null);
+    const fitAddonRef = useRef<FitAddon | null>(null);
+    const inputBufferRef = useRef('');
+    const historyRef = useRef<string[]>([]);
+    const histIdxRef = useRef(-1);
+    const cwdRef = useRef('~/project');
+    const branchRef = useRef('main');
+    const stagedFilesRef = useRef<string[]>([]);
+    const commitsRef = useRef<{ hash: string; msg: string; date: string }[]>([]);
+    const isProcessingRef = useRef(false);
 
-    const { files, cloneGitHubRepo, createFile, createFolder, deleteNode, pipPackages, addPipPackage, removePipPackage, activeVenv, setActiveVenv } = useEditorStore();
+    // Get shell type from store
+    const shellType = useEditorStore(s => {
+        const tab = s.terminalTabs.find(t => t.id === id);
+        return tab?.shellType || 'bash';
+    });
 
-    const print = useCallback((text: string) => {
-        setLines(prev => [...prev, text]);
-    }, []);
-
-    const printLines = useCallback((texts: string[]) => {
-        setLines(prev => [...prev, ...texts]);
-    }, []);
+    const getStoreState = useCallback(() => useEditorStore.getState(), []);
 
     const buildPrompt = useCallback(() => {
-        const venvPrefix = activeVenv ? `${C.cyan}(${activeVenv})${C.reset} ` : '';
-        return `${venvPrefix}${C.green}${cwd}${C.reset} ${C.blue}(${branch})${C.reset} ${C.white}$${C.reset} `;
-    }, [cwd, branch, activeVenv]);
+        const { activeVenv } = getStoreState();
+        return SHELL_PROMPTS[shellType](cwdRef.current, branchRef.current, activeVenv);
+    }, [shellType, getStoreState]);
+
+    const writePrompt = useCallback(() => {
+        const term = xtermRef.current;
+        if (!term) return;
+        term.write('\r\n' + buildPrompt());
+    }, [buildPrompt]);
+
+    const writeLine = useCallback((text: string) => {
+        const term = xtermRef.current;
+        if (!term) return;
+        term.write('\r\n' + text);
+    }, []);
+
+    const writeLines = useCallback((texts: string[]) => {
+        const term = xtermRef.current;
+        if (!term) return;
+        texts.forEach(t => term.write('\r\n' + t));
+    }, []);
 
     const handleCommand = useCallback(async (raw: string) => {
+        const term = xtermRef.current;
+        if (!term) return;
         const input = raw.trim();
-        if (!input) { print(''); return; }
+        if (!input) { writePrompt(); return; }
 
-        setHistory(prev => [input, ...prev.slice(0, 49)]);
-        histIdx.current = -1;
-
-        // Echo command with prompt
-        print(`${buildPrompt()}${C.white}${input}${C.reset}`);
+        historyRef.current = [input, ...historyRef.current.slice(0, 49)];
+        histIdxRef.current = -1;
 
         const args = input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
         const cmd = args[0];
         const sub = args[1];
 
+        const { files, cloneGitHubRepo, createFile, createFolder, deleteNode, pipPackages, activeVenv, setActiveVenv, addPipPackage, removePipPackage } = getStoreState();
+
         // ── git ──────────────────────────────────────────────
         if (cmd === 'git') {
-            if (!sub) { print(`${C.red}git: missing subcommand${C.reset}`); return; }
+            if (!sub) { writeLine('\x1b[31mgit: missing subcommand\x1b[0m'); writePrompt(); return; }
 
             if (sub === 'clone') {
                 const url = args[2];
-                if (!url) { print(`${C.red}git clone: missing repository URL${C.reset}`); return; }
-                printLines([
-                    `${C.cyan}Cloning into repository...${C.reset}`,
-                    `${C.gray}Fetching file tree from GitHub API...${C.reset}`,
-                ]);
+                if (!url) { writeLine('\x1b[31mgit clone: missing repository URL\x1b[0m'); writePrompt(); return; }
+                writeLines(['\x1b[36mCloning into repository...\x1b[0m', '\x1b[90mFetching file tree from GitHub API...\x1b[0m']);
                 try {
                     await cloneGitHubRepo(url);
                     const match = url.match(/\/([^/]+?)(?:\.git)?$/);
                     const repoName = match ? match[1] : 'repo';
-                    setCwd(`~/project/${repoName}`);
-                    printLines([
-                        `${C.green}remote: Enumerating objects: done.${C.reset}`,
-                        `${C.brightGreen}✓ Clone complete! Files loaded into Explorer.${C.reset}`,
-                    ]);
+                    cwdRef.current = `~/project/${repoName}`;
+                    writeLines(['\x1b[32mremote: Enumerating objects: done.\x1b[0m', '\x1b[92m✓ Clone complete! Files loaded into Explorer.\x1b[0m']);
                 } catch (e: unknown) {
-                    print(`${C.red}error: ${e instanceof Error ? e.message : String(e)}${C.reset}`);
+                    writeLine(`\x1b[31merror: ${e instanceof Error ? e.message : String(e)}\x1b[0m`);
                 }
-                return;
+                writePrompt(); return;
             }
 
             if (sub === 'status') {
                 const allFiles = flattenFiles(files);
-                printLines([
-                    `${C.bold}On branch ${branch}${C.reset}`,
-                    '',
-                    stagedFiles.length
-                        ? `${C.green}Changes staged for commit:${C.reset}`
-                        : `${C.gray}Nothing staged. Use 'git add .' to stage files.${C.reset}`,
-                    ...stagedFiles.map(f => `  ${C.green}modified: ${f}${C.reset}`),
-                    '',
-                    `${C.gray}Workspace has ${allFiles.length} file(s).${C.reset}`,
+                writeLines([
+                    `\x1b[1mOn branch ${branchRef.current}\x1b[0m`, '',
+                    stagedFilesRef.current.length
+                        ? '\x1b[32mChanges staged for commit:\x1b[0m'
+                        : "\x1b[90mNothing staged. Use 'git add .' to stage files.\x1b[0m",
+                    ...stagedFilesRef.current.map(f => `  \x1b[32mmodified: ${f}\x1b[0m`), '',
+                    `\x1b[90mWorkspace has ${allFiles.length} file(s).\x1b[0m`,
                 ]);
-                return;
+                writePrompt(); return;
             }
 
             if (sub === 'add') {
                 const target = args[2];
-                if (!target) { print(`${C.red}git add: missing file argument. Try 'git add .'${C.reset}`); return; }
+                if (!target) { writeLine("\x1b[31mgit add: missing file argument. Try 'git add .'\x1b[0m"); writePrompt(); return; }
                 const allFiles = flattenFiles(files);
                 if (target === '.' || target === '-A' || target === '--all') {
-                    setStagedFiles(allFiles);
-                    print(`${C.green}✓ Staged ${allFiles.length} files.${C.reset}`);
+                    stagedFilesRef.current = allFiles;
+                    writeLine(`\x1b[32m✓ Staged ${allFiles.length} files.\x1b[0m`);
                 } else {
                     const match = allFiles.find(f => f.endsWith(target));
                     if (match) {
-                        setStagedFiles(prev => [...new Set([...prev, match])]);
-                        print(`${C.green}✓ Staged: ${match}${C.reset}`);
+                        stagedFilesRef.current = [...new Set([...stagedFilesRef.current, match])];
+                        writeLine(`\x1b[32m✓ Staged: ${match}\x1b[0m`);
                     } else {
-                        print(`${C.red}pathspec '${target}' did not match any files.${C.reset}`);
+                        writeLine(`\x1b[31mpathspec '${target}' did not match any files.\x1b[0m`);
                     }
                 }
-                return;
+                writePrompt(); return;
             }
 
             if (sub === 'commit') {
-                if (!stagedFiles.length) { print(`${C.yellow}nothing to commit, working tree clean${C.reset}`); return; }
+                if (!stagedFilesRef.current.length) { writeLine('\x1b[33mnothing to commit, working tree clean\x1b[0m'); writePrompt(); return; }
                 const mIdx = (args as string[]).indexOf('-m');
-                const msg = mIdx !== -1
-                    ? args.slice(mIdx + 1).join(' ').replace(/^["']|["']$/g, '')
-                    : 'Update';
+                const msg = mIdx !== -1 ? args.slice(mIdx + 1).join(' ').replace(/^["']|["']$/g, '') : 'Update';
                 const hash = Math.random().toString(16).slice(2, 9);
-                setCommits(prev => [{ hash, msg, date: new Date().toLocaleString() }, ...prev]);
-                setStagedFiles([]);
-                printLines([
-                    `${C.yellow}[${branch} ${hash}]${C.reset} ${msg}`,
-                    `${C.green} ${stagedFiles.length} file(s) changed${C.reset}`,
-                ]);
-                return;
+                commitsRef.current = [{ hash, msg, date: new Date().toLocaleString() }, ...commitsRef.current];
+                const n = stagedFilesRef.current.length;
+                stagedFilesRef.current = [];
+                writeLines([`\x1b[33m[${branchRef.current} ${hash}]\x1b[0m ${msg}`, `\x1b[32m ${n} file(s) changed\x1b[0m`]);
+                writePrompt(); return;
             }
 
             if (sub === 'log') {
-                if (!commits.length) { print(`${C.gray}No commits yet. Use 'git add .' then 'git commit -m "msg"'${C.reset}`); return; }
-                for (const c of commits) {
-                    printLines([`${C.yellow}commit ${c.hash}${C.reset}`, `${C.gray}Date: ${c.date}${C.reset}`, `    ${c.msg}`, '']);
+                if (!commitsRef.current.length) { writeLine("\x1b[90mNo commits yet. Use 'git add .' then 'git commit -m \"msg\"'\x1b[0m"); writePrompt(); return; }
+                for (const c of commitsRef.current) {
+                    writeLines([`\x1b[33mcommit ${c.hash}\x1b[0m`, `\x1b[90mDate: ${c.date}\x1b[0m`, `    ${c.msg}`, '']);
                 }
-                return;
+                writePrompt(); return;
             }
 
             if (sub === 'branch') {
                 const name = args[2];
-                if (!name) { print(`${C.green}* ${branch}${C.reset}`); }
-                else { print(`${C.green}✓ Branch '${name}' created.${C.reset}`); }
-                return;
+                if (!name) { writeLine(`\x1b[32m* ${branchRef.current}\x1b[0m`); }
+                else { writeLine(`\x1b[32m✓ Branch '${name}' created.\x1b[0m`); }
+                writePrompt(); return;
             }
 
             if (sub === 'checkout') {
                 const isNew = args[2] === '-b';
                 const name = isNew ? args[3] : args[2];
-                if (!name) { print(`${C.red}git checkout: missing branch name${C.reset}`); return; }
-                setBranch(name);
-                print(`${C.green}✓ Switched to ${isNew ? 'new ' : ''}branch '${name}'${C.reset}`);
-                return;
+                if (!name) { writeLine('\x1b[31mgit checkout: missing branch name\x1b[0m'); writePrompt(); return; }
+                branchRef.current = name;
+                writeLine(`\x1b[32m✓ Switched to ${isNew ? 'new ' : ''}branch '${name}'\x1b[0m`);
+                writePrompt(); return;
             }
 
             if (sub === 'pull') {
-                printLines([
-                    `${C.cyan}Fetching from origin...${C.reset}`,
-                    `${C.yellow}ℹ To pull actual changes, use the GitHub Clone sidebar with the latest URL.${C.reset}`,
-                    `${C.green}Already up to date.${C.reset}`,
-                ]);
-                return;
+                writeLines(['\x1b[36mFetching from origin...\x1b[0m', '\x1b[33mℹ To pull actual changes, use the GitHub Clone sidebar with the latest URL.\x1b[0m', '\x1b[32mAlready up to date.\x1b[0m']);
+                writePrompt(); return;
             }
-
             if (sub === 'push') {
-                printLines([
-                    `${C.cyan}Enumerating objects...${C.reset}`,
-                    `${C.yellow}⚠  git push requires authentication not available in the browser.${C.reset}`,
-                    `${C.gray}   Download your project (Download tab) and push from your local terminal.${C.reset}`,
-                ]);
-                return;
+                writeLines(['\x1b[36mEnumerating objects...\x1b[0m', '\x1b[33m⚠  git push requires authentication not available in the browser.\x1b[0m', '\x1b[90m   Download your project (Download tab) and push from your local terminal.\x1b[0m']);
+                writePrompt(); return;
             }
-
-            if (sub === 'diff') { print(`${C.gray}No diff (all edits are in-memory).${C.reset}`); return; }
+            if (sub === 'diff') { writeLine('\x1b[90mNo diff (all edits are in-memory).\x1b[0m'); writePrompt(); return; }
             if (sub === 'stash') {
-                const n = stagedFiles.length;
-                setStagedFiles([]);
-                print(`${C.green}✓ Stashed ${n} file(s).${C.reset}`);
-                return;
+                const n = stagedFilesRef.current.length;
+                stagedFilesRef.current = [];
+                writeLine(`\x1b[32m✓ Stashed ${n} file(s).\x1b[0m`);
+                writePrompt(); return;
             }
-            if (sub === 'remote') { print(`${C.gray}origin${C.reset}`); return; }
+            if (sub === 'remote') { writeLine('\x1b[90morigin\x1b[0m'); writePrompt(); return; }
 
-            print(`${C.red}git: '${sub}' is not a recognized git command. Type 'help' for help.${C.reset}`);
-            return;
+            writeLine(`\x1b[31mgit: '${sub}' is not a recognized git command. Type 'help' for help.\x1b[0m`);
+            writePrompt(); return;
         }
 
         // ── npm ──────────────────────────────────────────────
         if (cmd === 'npm') {
-            printLines([
-                `${C.cyan}> npm ${args.slice(1).join(' ')}${C.reset}`,
-                `${C.yellow}ℹ npm commands cannot execute in the browser.${C.reset}`,
-                `${C.gray}  Download your project and run npm locally.${C.reset}`,
-            ]);
-            return;
+            writeLines([`\x1b[36m> npm ${args.slice(1).join(' ')}\x1b[0m`, '\x1b[33mℹ npm commands cannot execute in the browser.\x1b[0m', '\x1b[90m  Download your project and run npm locally.\x1b[0m']);
+            writePrompt(); return;
         }
 
         // ── ls ───────────────────────────────────────────────
         if (cmd === 'ls' || cmd === 'dir') {
-            const entries = files.map(f =>
-                f.type === 'folder' ? `${C.blue}${f.name}/${C.reset}` : `${C.white}${f.name}${C.reset}`
-            );
-            print(entries.join('   ') || `${C.gray}(empty)${C.reset}`);
-            return;
+            const entries = files.map(f => f.type === 'folder' ? `\x1b[34m${f.name}/\x1b[0m` : `\x1b[97m${f.name}\x1b[0m`);
+            writeLine(entries.join('   ') || '\x1b[90m(empty)\x1b[0m');
+            writePrompt(); return;
         }
 
-        if (cmd === 'pwd') { print(`${C.white}${cwd}${C.reset}`); return; }
+        if (cmd === 'pwd') { writeLine(`\x1b[97m${cwdRef.current}\x1b[0m`); writePrompt(); return; }
 
         if (cmd === 'cd') {
             const dir = args[1] || '~';
-            if (dir === '~' || dir === '') setCwd('~/project');
-            else if (dir === '..') setCwd(prev => prev.includes('/') ? prev.slice(0, prev.lastIndexOf('/')) || '~' : '~');
-            else setCwd(prev => `${prev}/${dir}`);
-            return;
+            if (dir === '~' || dir === '') cwdRef.current = '~/project';
+            else if (dir === '..') {
+                const cur = cwdRef.current;
+                cwdRef.current = cur.includes('/') ? cur.slice(0, cur.lastIndexOf('/')) || '~' : '~';
+            }
+            else cwdRef.current = `${cwdRef.current}/${dir}`;
+            writePrompt(); return;
         }
 
         if (cmd === 'touch') {
             const name = args[1];
-            if (!name) { print(`${C.red}touch: missing file name${C.reset}`); return; }
+            if (!name) { writeLine('\x1b[31mtouch: missing file name\x1b[0m'); writePrompt(); return; }
             createFile(name);
-            print(`${C.green}✓ Created: ${name}${C.reset}`);
-            return;
+            writeLine(`\x1b[32m✓ Created: ${name}\x1b[0m`);
+            writePrompt(); return;
         }
-        
+
         if (cmd === 'mkdir') {
             const name = args[1];
-            if (!name) { print(`${C.red}mkdir: missing operand${C.reset}`); return; }
+            if (!name) { writeLine('\x1b[31mmkdir: missing operand\x1b[0m'); writePrompt(); return; }
             createFolder(name);
-            print(`${C.green}✓ Created folder: ${name}${C.reset}`);
-            return;
+            writeLine(`\x1b[32m✓ Created folder: ${name}\x1b[0m`);
+            writePrompt(); return;
         }
 
         if (cmd === 'rm') {
             const name = args[1];
-            if (!name) { print(`${C.red}rm: missing operand${C.reset}`); return; }
+            if (!name) { writeLine('\x1b[31mrm: missing operand\x1b[0m'); writePrompt(); return; }
             const allFilesDetails = flattenFilesDetails(files);
             const target = allFilesDetails.find(f => f.name === name);
             if (target) {
                 deleteNode(target.id);
-                print(`${C.green}✓ Removed: ${name}${C.reset}`);
+                writeLine(`\x1b[32m✓ Removed: ${name}\x1b[0m`);
             } else {
-                print(`${C.red}rm: cannot remove '${name}': No such file or directory${C.reset}`);
+                writeLine(`\x1b[31mrm: cannot remove '${name}': No such file or directory\x1b[0m`);
             }
-            return;
+            writePrompt(); return;
         }
-        
+
         if (cmd === 'source') {
             const path = args[1];
-            if (!path) { print(`${C.red}source: filename argument required${C.reset}`); return; }
+            if (!path) { writeLine('\x1b[31msource: filename argument required\x1b[0m'); writePrompt(); return; }
             if (path.endsWith('/bin/activate') || path.endsWith('/Scripts/activate')) {
                 const venvName = path.split('/')[0];
                 setActiveVenv(venvName);
-                print(`${C.green}✓ Activated virtual environment '${venvName}'${C.reset}`);
+                writeLine(`\x1b[32m✓ Activated virtual environment '${venvName}'\x1b[0m`);
             } else {
-                print(`${C.red}source: ${path}: No such file or directory${C.reset}`);
+                writeLine(`\x1b[31msource: ${path}: No such file or directory\x1b[0m`);
             }
-            return;
+            writePrompt(); return;
         }
 
         if (cmd === 'deactivate') {
             if (activeVenv) {
                 setActiveVenv(null);
-                print(`${C.green}✓ Deactivated virtual environment${C.reset}`);
+                writeLine('\x1b[32m✓ Deactivated virtual environment\x1b[0m');
             } else {
-                print(`${C.red}deactivate: No virtual environment active${C.reset}`);
+                writeLine('\x1b[31mdeactivate: No virtual environment active\x1b[0m');
             }
-            return;
+            writePrompt(); return;
         }
 
         if (cmd === 'python' || cmd === 'python3') {
             if (args[1] === '-m' && args[2] === 'venv') {
                 const venvName = args[3];
-                if (!venvName) { print(`${C.red}Error: Command '['python', '-m', 'venv']' requires an argument${C.reset}`); return; }
-                
-                printLines([`${C.cyan}Creating virtual environment '${venvName}'...${C.reset}`]);
+                if (!venvName) { writeLine("\x1b[31mError: Command '['python', '-m', 'venv']' requires an argument\x1b[0m"); writePrompt(); return; }
+                writeLine(`\x1b[36mCreating virtual environment '${venvName}'...\x1b[0m`);
                 createFolder(venvName);
                 createFolder(`${venvName}/bin`);
                 createFolder(`${venvName}/lib`);
-                createFile('activate', `${venvName}/bin`); // mock activate script
-                print(`${C.green}✓ Virtual environment created. Run 'source ${venvName}/bin/activate' to activate it.${C.reset}`);
-                return;
-                return;
+                createFile('activate', `${venvName}/bin`);
+                writeLine(`\x1b[32m✓ Virtual environment created. Run 'source ${venvName}/bin/activate' to activate it.\x1b[0m`);
+                writePrompt(); return;
             }
 
             if (args[1] === '--version' || args[1] === '-V' || args[1] === '--v') {
-                print('Python 3.12.1 (Pyodide WebAssembly)');
-                return;
+                writeLine('Python 3.12.1 (Pyodide WebAssembly)');
+                writePrompt(); return;
             }
 
             const name = args[1];
-            if (!name) { print(`${C.red}python: missing file name${C.reset}`); return; }
+            if (!name) { writeLine('\x1b[31mpython: missing file name\x1b[0m'); writePrompt(); return; }
             const file = flattenFilesDetails(files).find(f => f.name === name);
-            if (!file || !file.content) { print(`${C.red}python: can't open file '${name}': [Errno 2] No such file or directory${C.reset}`); return; }
-            
-            printLines([`${C.cyan}Starting Python (Pyodide WebAssembly)...${C.reset}`]);
+            if (!file || !file.content) { writeLine(`\x1b[31mpython: can't open file '${name}': [Errno 2] No such file or directory\x1b[0m`); writePrompt(); return; }
+
+            writeLine('\x1b[36mStarting Python (Pyodide WebAssembly)...\x1b[0m');
             try {
                 const pyodide = await getPyodide();
                 const sessionPkgs = pipPackages[activeVenv || 'global'] || [];
@@ -388,37 +338,34 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ isActive }) 
                     const micropip = pyodide.pyimport("micropip");
                     await micropip.install(sessionPkgs);
                 }
-
-                pyodide.setStdout({ batched: (str: string) => print(str) });
-                pyodide.setStderr({ batched: (str: string) => print(`${C.red}${str}${C.reset}`) });
-                
+                pyodide.setStdout({ batched: (str: string) => writeLine(str) });
+                pyodide.setStderr({ batched: (str: string) => writeLine(`\x1b[31m${str}\x1b[0m`) });
                 await pyodide.runPythonAsync(file.content);
-                print(`${C.brightGreen}Process finished with exit code 0${C.reset}`);
+                writeLine('\x1b[92mProcess finished with exit code 0\x1b[0m');
             } catch (e: unknown) {
-                print(`${C.red}${e instanceof Error ? e.message : String(e)}${C.reset}`);
+                writeLine(`\x1b[31m${e instanceof Error ? e.message : String(e)}\x1b[0m`);
             }
-            return;
+            writePrompt(); return;
         }
 
         if (cmd === 'pip' || cmd === 'pip3') {
             if (sub === 'install') {
                 const pkg = args[2];
-                if (!pkg) { print(`${C.red}pip install: missing package name${C.reset}`); return; }
-                
+                if (!pkg) { writeLine('\x1b[31mpip install: missing package name\x1b[0m'); writePrompt(); return; }
+
                 if (pkg === '-r') {
                     const reqFile = args[3];
-                    if (!reqFile) { print(`${C.red}pip install -r: missing requirements file name${C.reset}`); return; }
+                    if (!reqFile) { writeLine('\x1b[31mpip install -r: missing requirements file name\x1b[0m'); writePrompt(); return; }
                     const file = flattenFilesDetails(files).find(f => f.name === reqFile);
-                    if (!file || typeof file.content !== 'string') { print(`${C.red}ERROR: Could not open requirements file: [Errno 2] No such file or directory: '${reqFile}'${C.reset}`); return; }
-                    
-                    const pkgs = file.content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
-                    if (pkgs.length === 0) { print(`${C.yellow}Requirements file is empty.${C.reset}`); return; }
+                    if (!file || typeof file.content !== 'string') { writeLine(`\x1b[31mERROR: Could not open requirements file: [Errno 2] No such file or directory: '${reqFile}'\x1b[0m`); writePrompt(); return; }
 
-                    printLines([`${C.cyan}Collecting packages from ${reqFile}...${C.reset}`, `${C.gray}Downloading wheels from PyPI via Pyodide micropip...${C.reset}`]);
+                    const pkgs = file.content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+                    if (pkgs.length === 0) { writeLine('\x1b[33mRequirements file is empty.\x1b[0m'); writePrompt(); return; }
+
+                    writeLines([`\x1b[36mCollecting packages from ${reqFile}...\x1b[0m`, '\x1b[90mDownloading wheels from PyPI via Pyodide micropip...\x1b[0m']);
                     try {
                         const pyodide = await getPyodide();
                         const micropip = pyodide.pyimport("micropip");
-                        
                         const installed: string[] = [];
                         for (const p of pkgs) {
                             try {
@@ -426,168 +373,314 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ isActive }) 
                                 installed.push(p);
                                 addPipPackage(p, activeVenv || 'global');
                             } catch (e: unknown) {
-                                print(`${C.red}Failed to install ${p}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}${C.reset}`);
+                                writeLine(`\x1b[31mFailed to install ${p}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}\x1b[0m`);
                             }
                         }
-                        
-                        if (installed.length > 0) {
-                            printLines([
-                                `${C.green}Successfully installed ${installed.join(', ')}${C.reset}`
-                            ]);
-                        } else {
-                            print(`${C.yellow}No packages were installed successfully.${C.reset}`);
-                        }
+                        if (installed.length > 0) writeLine(`\x1b[32mSuccessfully installed ${installed.join(', ')}\x1b[0m`);
+                        else writeLine('\x1b[33mNo packages were installed successfully.\x1b[0m');
                     } catch (e: unknown) {
-                        print(`${C.red}ERROR initializing micropip: ${e instanceof Error ? e.message : String(e)}${C.reset}`);
+                        writeLine(`\x1b[31mERROR initializing micropip: ${e instanceof Error ? e.message : String(e)}\x1b[0m`);
                     }
-                    return;
+                    writePrompt(); return;
                 }
 
-                printLines([`${C.cyan}Collecting ${pkg}...${C.reset}`, `${C.gray}Downloading wheel from PyPI via Pyodide micropip...${C.reset}`]);
+                writeLines([`\x1b[36mCollecting ${pkg}...\x1b[0m`, '\x1b[90mDownloading wheel from PyPI via Pyodide micropip...\x1b[0m']);
                 try {
                     const pyodide = await getPyodide();
                     const micropip = pyodide.pyimport("micropip");
                     await micropip.install(pkg);
                     addPipPackage(pkg, activeVenv || 'global');
-                    printLines([
-                        `${C.green}Successfully installed ${pkg}${C.reset}`,
-                    ]);
+                    writeLine(`\x1b[32mSuccessfully installed ${pkg}\x1b[0m`);
                 } catch (e: unknown) {
-                    print(`${C.red}ERROR: Could not find a version that satisfies the requirement ${pkg}${C.reset}`);
-                    print(`${C.red}${e instanceof Error ? e.message : String(e)}${C.reset}`);
+                    writeLine(`\x1b[31mERROR: Could not find a version that satisfies the requirement ${pkg}\x1b[0m`);
+                    writeLine(`\x1b[31m${e instanceof Error ? e.message : String(e)}\x1b[0m`);
                 }
-                return;
+                writePrompt(); return;
             } else if (sub === 'uninstall') {
                 const pkg = args[2];
-                if (!pkg) { print(`${C.red}pip uninstall: missing package name${C.reset}`); return; }
-                
-                printLines([`${C.cyan}Found existing installation: ${pkg}${C.reset}`, `${C.gray}Uninstalling ${pkg}...${C.reset}`]);
+                if (!pkg) { writeLine('\x1b[31mpip uninstall: missing package name\x1b[0m'); writePrompt(); return; }
+                writeLines([`\x1b[36mFound existing installation: ${pkg}\x1b[0m`, `\x1b[90mUninstalling ${pkg}...\x1b[0m`]);
                 try {
                     const pyodide = await getPyodide();
                     const micropip = pyodide.pyimport("micropip");
-                    // Pyodide micropip supports uninstalling
-                    try { await micropip.uninstall(pkg); } catch { /* ignore if not deeply installed */ }
+                    try { await micropip.uninstall(pkg); } catch { /* ignore */ }
                     removePipPackage(pkg, activeVenv || 'global');
-                    print(`${C.green}Successfully uninstalled ${pkg}${C.reset}`);
+                    writeLine(`\x1b[32mSuccessfully uninstalled ${pkg}\x1b[0m`);
                 } catch (e: unknown) {
-                    print(`${C.red}ERROR: Uninstall failed.${C.reset} ${e instanceof Error ? e.message : String(e)}`);
+                    writeLine(`\x1b[31mERROR: Uninstall failed.\x1b[0m ${e instanceof Error ? e.message : String(e)}`);
                 }
-                return;
+                writePrompt(); return;
             } else {
-                print(`${C.red}pip: '${sub}' command is not simulated in the browser${C.reset}`);
-                return;
+                writeLine(`\x1b[31mpip: '${sub}' command is not simulated in the browser\x1b[0m`);
+                writePrompt(); return;
             }
         }
 
-        if (cmd === 'clear' || cmd === 'cls') { setLines([]); return; }
-
-        if (cmd === 'help') {
-            printLines([
-                `${C.bold}${C.cyan}CodeSpace Terminal — Available Commands${C.reset}`,
-                '',
-                `${C.yellow}Git:${C.reset}`,
-                `  ${C.green}git clone <url>${C.reset}         Clone a GitHub repo (real API)`,
-                `  ${C.green}git status${C.reset}              Show staged files`,
-                `  ${C.green}git add <file|.>${C.reset}        Stage files`,
-                `  ${C.green}git commit -m "msg"${C.reset}     Commit staged files`,
-                `  ${C.green}git log${C.reset}                 Show commit history`,
-                `  ${C.green}git branch [name]${C.reset}       List or create branch`,
-                `  ${C.green}git checkout [-b] <name>${C.reset} Switch/create branch`,
-                `  ${C.green}git pull / push / diff${C.reset}  Git operations`,
-                '',
-                `${C.yellow}Files & Script Execution:${C.reset}`,
-                `  ${C.green}ls${C.reset}  ${C.green}pwd${C.reset}  ${C.green}cd <dir>${C.reset}  ${C.green}clear${C.reset}`,
-                `  ${C.green}touch <name>${C.reset}  ${C.green}mkdir <name>${C.reset}  ${C.green}rm <name>${C.reset}`,
-                `  ${C.green}python <file.py>${C.reset}        Execute Python using Pyodide`,
-                `  ${C.green}python -m venv <name>${C.reset}   Create virtual environment`,
-                `  ${C.green}source <env>/bin/activate${C.reset} Activate venv`,
-                `  ${C.green}deactivate${C.reset}              Deactivate venv`,
-                `  ${C.green}pip install / uninstall${C.reset} Install/Remove packages`,
-            ]);
+        if (cmd === 'clear' || cmd === 'cls') {
+            term.clear();
+            term.write(buildPrompt());
             return;
         }
 
-        print(`${C.red}command not found: ${C.white}${cmd}${C.reset} — type ${C.cyan}help${C.reset}`);
-    }, [files, branch, stagedFiles, commits, cwd, cloneGitHubRepo, createFile, createFolder, deleteNode, pipPackages, activeVenv, setActiveVenv, addPipPackage, removePipPackage, print, printLines, buildPrompt]);
-
-    const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            const val = inputVal;
-            setInputVal('');
-            await handleCommand(val);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            const next = Math.min(histIdx.current + 1, history.length - 1);
-            histIdx.current = next;
-            setInputVal(history[next] || '');
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            const next = Math.max(histIdx.current - 1, -1);
-            histIdx.current = next;
-            setInputVal(next === -1 ? '' : history[next]);
+        if (cmd === 'echo') {
+            writeLine(args.slice(1).join(' ').replace(/^["']|["']$/g, ''));
+            writePrompt(); return;
         }
-    };
 
+        if (cmd === 'whoami') {
+            writeLine('codespace-user');
+            writePrompt(); return;
+        }
+
+        if (cmd === 'date') {
+            writeLine(new Date().toString());
+            writePrompt(); return;
+        }
+
+        if (cmd === 'uname') {
+            writeLine('CodeSpace Browser OS 1.0 WASM');
+            writePrompt(); return;
+        }
+
+        if (cmd === 'cat') {
+            const name = args[1];
+            if (!name) { writeLine('\x1b[31mcat: missing file name\x1b[0m'); writePrompt(); return; }
+            const file = flattenFilesDetails(files).find(f => f.name === name);
+            if (file && file.content) {
+                file.content.split('\n').forEach(line => writeLine(line));
+            } else {
+                writeLine(`\x1b[31mcat: ${name}: No such file or directory\x1b[0m`);
+            }
+            writePrompt(); return;
+        }
+
+        if (cmd === 'head') {
+            const name = args[1];
+            if (!name) { writeLine('\x1b[31mhead: missing file name\x1b[0m'); writePrompt(); return; }
+            const file = flattenFilesDetails(files).find(f => f.name === name);
+            if (file && file.content) {
+                file.content.split('\n').slice(0, 10).forEach(line => writeLine(line));
+            } else {
+                writeLine(`\x1b[31mhead: ${name}: No such file or directory\x1b[0m`);
+            }
+            writePrompt(); return;
+        }
+
+        if (cmd === 'wc') {
+            const name = args[1];
+            if (!name) { writeLine('\x1b[31mwc: missing file name\x1b[0m'); writePrompt(); return; }
+            const file = flattenFilesDetails(files).find(f => f.name === name);
+            if (file && file.content) {
+                const lines = file.content.split('\n').length;
+                const words = file.content.split(/\s+/).filter(Boolean).length;
+                const chars = file.content.length;
+                writeLine(`  ${lines}  ${words}  ${chars} ${name}`);
+            } else {
+                writeLine(`\x1b[31mwc: ${name}: No such file or directory\x1b[0m`);
+            }
+            writePrompt(); return;
+        }
+
+        if (cmd === 'help') {
+            writeLines([
+                '\x1b[1m\x1b[36mCodeSpace Terminal — Available Commands\x1b[0m', '',
+                '\x1b[33mGit:\x1b[0m',
+                '  \x1b[32mgit clone <url>\x1b[0m         Clone a GitHub repo (real API)',
+                '  \x1b[32mgit status\x1b[0m              Show staged files',
+                '  \x1b[32mgit add <file|.>\x1b[0m        Stage files',
+                '  \x1b[32mgit commit -m "msg"\x1b[0m     Commit staged files',
+                '  \x1b[32mgit log\x1b[0m                 Show commit history',
+                '  \x1b[32mgit branch [name]\x1b[0m       List or create branch',
+                '  \x1b[32mgit checkout [-b] <name>\x1b[0m Switch/create branch',
+                '  \x1b[32mgit pull / push / diff\x1b[0m  Git operations', '',
+                '\x1b[33mFiles & Script Execution:\x1b[0m',
+                '  \x1b[32mls\x1b[0m  \x1b[32mpwd\x1b[0m  \x1b[32mcd <dir>\x1b[0m  \x1b[32mclear\x1b[0m',
+                '  \x1b[32mtouch <name>\x1b[0m  \x1b[32mmkdir <name>\x1b[0m  \x1b[32mrm <name>\x1b[0m',
+                '  \x1b[32mcat <file>\x1b[0m  \x1b[32mhead <file>\x1b[0m  \x1b[32mwc <file>\x1b[0m',
+                '  \x1b[32mecho <text>\x1b[0m  \x1b[32mwhoami\x1b[0m  \x1b[32mdate\x1b[0m  \x1b[32muname\x1b[0m',
+                '  \x1b[32mpython <file.py>\x1b[0m        Execute Python using Pyodide',
+                '  \x1b[32mpython -m venv <name>\x1b[0m   Create virtual environment',
+                '  \x1b[32msource <env>/bin/activate\x1b[0m Activate venv',
+                '  \x1b[32mdeactivate\x1b[0m              Deactivate venv',
+                '  \x1b[32mpip install / uninstall\x1b[0m Install/Remove packages',
+            ]);
+            writePrompt(); return;
+        }
+
+        writeLine(`\x1b[31mcommand not found: \x1b[97m${cmd}\x1b[0m — type \x1b[36mhelp\x1b[0m`);
+        writePrompt();
+    }, [getStoreState, writeLine, writeLines, writePrompt, buildPrompt]);
+
+    // Initialize xterm
     useEffect(() => {
-        if (bottomRef.current) {
-            bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+        if (!termRef.current || xtermRef.current) return;
+
+        const term = new Terminal({
+            cursorBlink: true,
+            cursorStyle: 'bar',
+            fontSize: 13,
+            fontFamily: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', Menlo, Monaco, 'Courier New', monospace",
+            theme: {
+                background: '#0d1117',
+                foreground: '#c9d1d9',
+                cursor: '#58a6ff',
+                selectionBackground: '#264f78',
+                selectionForeground: '#ffffff',
+                black: '#0d1117',
+                red: '#f85149',
+                green: '#3fb950',
+                yellow: '#d29922',
+                blue: '#58a6ff',
+                magenta: '#bc8cff',
+                cyan: '#39c5cf',
+                white: '#c9d1d9',
+                brightBlack: '#6e7681',
+                brightRed: '#ffa198',
+                brightGreen: '#56d364',
+                brightYellow: '#e3b341',
+                brightBlue: '#79c0ff',
+                brightMagenta: '#d2a8ff',
+                brightCyan: '#56d4dd',
+                brightWhite: '#f0f6fc',
+            },
+            allowTransparency: true,
+            scrollback: 5000,
+            convertEol: true,
+        });
+
+        const fitAddon = new FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(termRef.current);
+
+        try { fitAddon.fit(); } catch { /* container not visible yet */ }
+
+        xtermRef.current = term;
+        fitAddonRef.current = fitAddon;
+
+        // Welcome message
+        term.writeln('\x1b[92m\x1b[1m  ┌──────────────────────────┐\x1b[0m');
+        term.writeln('\x1b[92m\x1b[1m  │    CodeSpace Terminal    │\x1b[0m');
+        term.writeln('\x1b[92m\x1b[1m  └──────────────────────────┘\x1b[0m');
+        term.writeln('');
+        term.writeln('\x1b[90m  Type \x1b[36mhelp\x1b[90m for commands.\x1b[0m');
+        term.write('\r\n' + buildPrompt());
+
+        // Handle key input  
+        term.onData((data: string) => {
+            if (isProcessingRef.current) return;
+
+            // Handle special characters
+            if (data === '\r') {
+                // Enter
+                const cmd = inputBufferRef.current;
+                inputBufferRef.current = '';
+                isProcessingRef.current = true;
+                handleCommand(cmd).finally(() => { isProcessingRef.current = false; });
+            } else if (data === '\x7f') {
+                // Backspace
+                if (inputBufferRef.current.length > 0) {
+                    inputBufferRef.current = inputBufferRef.current.slice(0, -1);
+                    term.write('\b \b');
+                }
+            } else if (data === '\x1b[A') {
+                // Arrow Up - history
+                const next = Math.min(histIdxRef.current + 1, historyRef.current.length - 1);
+                if (next >= 0 && historyRef.current[next]) {
+                    // Clear current input
+                    const clearLen = inputBufferRef.current.length;
+                    term.write('\b \b'.repeat(clearLen));
+                    histIdxRef.current = next;
+                    inputBufferRef.current = historyRef.current[next];
+                    term.write(inputBufferRef.current);
+                }
+            } else if (data === '\x1b[B') {
+                // Arrow Down - history
+                const clearLen = inputBufferRef.current.length;
+                term.write('\b \b'.repeat(clearLen));
+                const next = Math.max(histIdxRef.current - 1, -1);
+                histIdxRef.current = next;
+                inputBufferRef.current = next === -1 ? '' : historyRef.current[next];
+                term.write(inputBufferRef.current);
+            } else if (data === '\x03') {
+                // Ctrl+C
+                inputBufferRef.current = '';
+                term.write('^C');
+                writePrompt();
+            } else if (data === '\x0c') {
+                // Ctrl+L (clear)
+                term.clear();
+                term.write(buildPrompt());
+                inputBufferRef.current = '';
+            } else if (data === '\t') {
+                // Tab completion - basic
+                const partial = inputBufferRef.current;
+                const { files } = useEditorStore.getState();
+                const allNames = flattenFilesDetails(files).map(f => f.name);
+                const parts = partial.split(' ');
+                const lastPart = parts[parts.length - 1];
+                if (lastPart) {
+                    const matches = allNames.filter(n => n.startsWith(lastPart));
+                    if (matches.length === 1) {
+                        const completion = matches[0].slice(lastPart.length);
+                        inputBufferRef.current += completion;
+                        term.write(completion);
+                    } else if (matches.length > 1) {
+                        writeLine('');
+                        writeLine(matches.join('  '));
+                        term.write('\r\n' + buildPrompt() + inputBufferRef.current);
+                    }
+                }
+            } else if (data.charCodeAt(0) >= 32) {
+                // Normal printable characters
+                inputBufferRef.current += data;
+                term.write(data);
+            }
+        });
+
+        return () => {
+            term.dispose();
+            xtermRef.current = null;
+            fitAddonRef.current = null;
+        };
+    // buildPrompt and handleCommand are stable callbacks, we only want to init once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Fit on visibility change
+    useEffect(() => {
+        if (isActive && fitAddonRef.current) {
+            setTimeout(() => {
+                try { fitAddonRef.current?.fit(); } catch { /* ignore */ }
+            }, 50);
         }
-    }, [lines]);
+    }, [isActive]);
+
+    // Fit on resize
+    useEffect(() => {
+        const handleResize = () => {
+            if (isActive && fitAddonRef.current) {
+                try { fitAddonRef.current.fit(); } catch { /* ignore */ }
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        const observer = new ResizeObserver(() => handleResize());
+        if (termRef.current) observer.observe(termRef.current);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            observer.disconnect();
+        };
+    }, [isActive]);
 
     return (
         <div
-            className="terminal-wrapper"
+            ref={termRef}
+            className="xterm-container"
             style={{
-                display: isActive ? 'flex' : 'none',
-                flexDirection: 'column',
-                background: '#0d1117',
-                fontFamily: 'Fira Code, Courier New, monospace',
-                fontSize: '12px',
-                cursor: 'text',
+                display: isActive ? 'block' : 'none',
+                width: '100%',
                 height: '100%',
-                overflow: 'hidden'
+                background: '#0d1117',
             }}
-            onClick={() => inputRef.current?.focus()}
-        >
-            <div
-                style={{ flex: 1, overflowY: 'auto', padding: '6px 10px', lineHeight: '1.65', minHeight: 0 }}
-            >
-                {lines.map((line, i) => (
-                    <div
-                        key={i}
-                        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#c9d1d9', minHeight: '1em' }}
-                        dangerouslySetInnerHTML={{ __html: ansiToHtml(line) }}
-                    />
-                ))}
-
-                <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
-                    <span
-                        style={{ whiteSpace: 'pre', flexShrink: 0 }}
-                        dangerouslySetInnerHTML={{ __html: ansiToHtml(buildPrompt()) }}
-                    />
-                    <input
-                        ref={inputRef}
-                        value={inputVal}
-                        onChange={e => setInputVal(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                            flex: 1,
-                            minWidth: 0,
-                            background: 'transparent',
-                            border: 'none',
-                            outline: 'none',
-                            color: '#c9d1d9',
-                            fontFamily: 'inherit',
-                            fontSize: 'inherit',
-                            caretColor: '#58a6ff',
-                        }}
-                        autoFocus
-                        spellCheck={false}
-                        autoComplete="off"
-                    />
-                </div>
-                <div ref={bottomRef} />
-            </div>
-        </div>
+        />
     );
 };

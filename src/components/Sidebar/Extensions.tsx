@@ -1,172 +1,342 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, DownloadCloud, Search, CheckCircle2, Star, Filter, Trash2 } from 'lucide-react';
-
-interface Ext {
-    id: string; name: string; author: string; description: string;
-    installed: boolean; recommended?: boolean; downloads: string; rating: number; verified?: boolean;
-}
-
-const initialExtensions: Ext[] = [
-    { id: 'emmet', name: 'Emmet', author: 'Emmet', description: 'HTML/CSS abbreviations: type "div.box>p" and expand to full tags instantly.', installed: true, downloads: '12.4M', rating: 4.8, verified: true },
-    { id: 'prettier', name: 'Prettier - Code formatter', author: 'Prettier', description: 'Auto-format HTML, CSS, JS & TS with Shift+Alt+F. Keeps your code clean.', installed: false, recommended: true, downloads: '38.2M', rating: 4.5, verified: true },
-    { id: 'python', name: 'Python', author: 'Microsoft', description: 'Python IntelliSense: snippets for def, class, for, import, list comprehensions, etc.', installed: false, recommended: true, downloads: '100M+', rating: 4.5, verified: true },
-    { id: 'angular', name: 'Angular Language Service', author: 'Angular', description: 'Angular directives: *ngIf, *ngFor, [(ngModel)], [ngClass], @Component and more.', installed: false, recommended: true, downloads: '4.8M', rating: 4.5, verified: true },
-    { id: 'bootstrap-snippets', name: 'Bootstrap 5 Snippets', author: 'HansUXdev', description: 'Bootstrap 5 HTML snippets: cards, navbars, modals, alerts, tables and more.', installed: false, recommended: true, downloads: '2.1M', rating: 4.5, verified: true },
-    { id: 'dracula', name: 'Dracula Official', author: 'Dracula Theme', description: 'Official Dracula dark theme. Select it via the Editor Settings dropdown.', installed: true, downloads: '5.9M', rating: 5, verified: true },
-    { id: 'night-owl', name: 'Night Owl', author: 'sarah.drasner', description: 'A VS Code dark theme tuned for night owls. Select it via Editor Settings.', installed: false, downloads: '3.0M', rating: 5, verified: true },
-    { id: 'nord', name: 'Nord', author: 'arcticicestudio', description: 'Arctic, north-bluish color palette. Select it via Editor Settings dropdown.', installed: false, downloads: '1.5M', rating: 4.5, verified: true },
-];
-
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+    DownloadCloud, Search, CheckCircle2, Star,
+    Trash2, Loader2, AlertCircle, Package, ArrowLeft
+} from 'lucide-react';
 import { useEditorStore } from '../../store/useEditorStore';
+import type { InstalledExtension } from '../../store/useEditorStore';
+import {
+    searchExtensions, formatDownloads, extensionId, getExtensionDetail,
+} from '../../services/openVsxApi';
+import type { OpenVsxExtension, OpenVsxExtensionDetail } from '../../services/openVsxApi';
+
+// ─── Main Extensions Component ──────────────────────────────────────────────
+
+type Tab = 'marketplace' | 'installed';
+type SortBy = 'downloadCount' | 'averageRating' | 'timestamp' | 'relevance';
 
 export const Extensions: React.FC = () => {
-    const { installedExtensions, toggleExtension } = useEditorStore();
-    const [searchQuery, setSearchQuery] = useState('');
-    const [installedOpen, setInstalledOpen] = useState(true);
-    const [recommendedOpen, setRecommendedOpen] = useState(true);
+    const { installedExtensions, installExtension, uninstallExtension } = useEditorStore();
 
-    const extensions = initialExtensions.map(ext => ({
-        ...ext,
-        installed: installedExtensions.includes(ext.id)
-    }));
+    const [tab, setTab] = useState<Tab>('marketplace');
+    const [query, setQuery] = useState('');
+    const [sortBy, setSortBy] = useState<SortBy>('downloadCount');
+    const [results, setResults] = useState<OpenVsxExtension[]>([]);
+    const [totalSize, setTotalSize] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [selectedExt, setSelectedExt] = useState<OpenVsxExtensionDetail | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handleToggleInstall = (id: string, e?: React.MouseEvent) => {
-        if (e) e.stopPropagation();
-        toggleExtension(id);
+    // Search Open VSX
+    const doSearch = useCallback(async (q: string, sort: SortBy) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await searchExtensions(q, { size: 30, sortBy: sort, sortOrder: 'desc' });
+            setResults(data.extensions);
+            setTotalSize(data.totalSize);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Search failed');
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Debounced search on query/sort change
+    useEffect(() => {
+        if (tab !== 'marketplace') return;
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => doSearch(query, sortBy), 400);
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    }, [query, sortBy, tab, doSearch]);
+
+    // Load popular on mount
+    useEffect(() => { doSearch('', 'downloadCount'); }, [doSearch]);
+
+    const handleInstall = (ext: OpenVsxExtension) => {
+        const entry: InstalledExtension = {
+            id: extensionId(ext),
+            name: ext.name,
+            namespace: ext.namespace,
+            displayName: ext.displayName || ext.name,
+            description: ext.description || '',
+            version: ext.version,
+            iconUrl: ext.files?.icon,
+        };
+        installExtension(entry);
     };
 
-    const filtered = extensions.filter(ext =>
-        ext.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ext.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ext.author.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const handleUninstall = (id: string) => {
+        uninstallExtension(id);
+    };
 
-    const installed = filtered.filter(e => e.installed);
-    const recommended = filtered.filter(e => !e.installed && e.recommended).concat(filtered.filter(e => !e.installed && !e.recommended));
+    const isInstalled = (ext: OpenVsxExtension) =>
+        installedExtensions.some(e => e.id === extensionId(ext));
 
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#181818', color: '#ccc' }}>
-            {/* Header + Search */}
-            <div style={{ padding: '10px 14px 6px' }}>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', marginBottom: 10, color: '#ccc', letterSpacing: 0.5 }}>Extensions</div>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Search size={14} style={{ position: 'absolute', left: 6, color: '#888' }} />
-                    <input
-                        type="text"
-                        placeholder="Search Extensions in Marketplace"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        style={{
-                            width: '100%', padding: '4px 28px', backgroundColor: '#3c3c3c',
-                            border: '1px solid transparent', color: '#fff', borderRadius: 2, fontSize: 12, outline: 'none'
-                        }}
-                        onFocus={(e) => e.target.style.border = '1px solid #007fd4'}
-                        onBlur={(e) => e.target.style.border = '1px solid transparent'}
-                        spellCheck={false}
-                    />
-                    <Filter size={14} style={{ position: 'absolute', right: 6, color: '#888', cursor: 'pointer' }} />
+    const handleShowDetail = async (ext: OpenVsxExtension) => {
+        setDetailLoading(true);
+        setSelectedExt(null);
+        try {
+            const detail = await getExtensionDetail(ext.namespace, ext.name);
+            setSelectedExt(detail);
+        } catch {
+            // Fallback to basic data
+            setSelectedExt(ext as OpenVsxExtensionDetail);
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    // ─── Detail View ─────────────────────────────────────────────────────────
+    if (selectedExt || detailLoading) {
+        return (
+            <div className="ext-panel">
+                <div className="ext-header">
+                    <button className="ext-back-btn" onClick={() => setSelectedExt(null)}>
+                        <ArrowLeft size={14} />
+                        <span>Back</span>
+                    </button>
                 </div>
-            </div>
-
-            {/* Lists Container */}
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-                {/* INSTALLED */}
-                {installed.length > 0 && (
-                    <div style={{ marginBottom: 10 }}>
-                        <div
-                            style={{ display: 'flex', alignItems: 'center', padding: '4px 2px', cursor: 'pointer', fontSize: 11, fontWeight: 'bold' }}
-                            onClick={() => setInstalledOpen(!installedOpen)}
-                        >
-                            {installedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            <span style={{ marginLeft: 2, textTransform: 'uppercase' }}>Installed</span>
-                            <span style={{ marginLeft: 8, padding: '1px 6px', backgroundColor: '#333', borderRadius: 10, fontSize: 10, fontWeight: 'normal' }}>{installed.length}</span>
+                {detailLoading ? (
+                    <div className="ext-center"><Loader2 size={20} className="ext-spin" /> Loading...</div>
+                ) : selectedExt && (
+                    <div className="ext-detail">
+                        <div className="ext-detail-hero">
+                            {selectedExt.files?.icon ? (
+                                <img src={selectedExt.files.icon} alt="" className="ext-detail-icon" />
+                            ) : (
+                                <div className="ext-detail-icon ext-icon-placeholder">
+                                    {(selectedExt.displayName || selectedExt.name).charAt(0)}
+                                </div>
+                            )}
+                            <div className="ext-detail-meta">
+                                <div className="ext-detail-name">{selectedExt.displayName || selectedExt.name}</div>
+                                <div className="ext-detail-ns">{selectedExt.namespace}</div>
+                                <div className="ext-detail-version">v{selectedExt.version}</div>
+                            </div>
                         </div>
-                        {installedOpen && installed.map(ext => <ExtensionItem key={ext.id} ext={ext} onToggle={handleToggleInstall} />)}
+
+                        <div className="ext-detail-stats">
+                            <span><DownloadCloud size={12} /> {formatDownloads(selectedExt.downloadCount)}</span>
+                            {selectedExt.averageRating != null && (
+                                <span><Star size={12} fill="#e3b341" color="#e3b341" /> {selectedExt.averageRating.toFixed(1)}</span>
+                            )}
+                            {selectedExt.verified && (
+                                <span className="ext-verified"><CheckCircle2 size={12} /> Verified</span>
+                            )}
+                        </div>
+
+                        <p className="ext-detail-desc">{selectedExt.description}</p>
+
+                        {selectedExt.categories && selectedExt.categories.length > 0 && (
+                            <div className="ext-detail-tags">
+                                {selectedExt.categories.map(c => (
+                                    <span key={c} className="ext-tag">{c}</span>
+                                ))}
+                            </div>
+                        )}
+
+                        {selectedExt.repository && (
+                            <a href={selectedExt.repository} target="_blank" rel="noopener noreferrer" className="ext-detail-link">
+                                Repository ↗
+                            </a>
+                        )}
+
+                        <div className="ext-detail-actions">
+                            {installedExtensions.some(e => e.id === extensionId(selectedExt)) ? (
+                                <button className="ext-btn ext-btn-uninstall" onClick={() => handleUninstall(extensionId(selectedExt))}>
+                                    <Trash2 size={12} /> Uninstall
+                                </button>
+                            ) : (
+                                <button className="ext-btn ext-btn-install" onClick={() => handleInstall(selectedExt)}>
+                                    <DownloadCloud size={12} /> Install
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )}
+            </div>
+        );
+    }
 
-                {/* RECOMMENDED */}
-                {recommended.length > 0 && (
-                    <div style={{ marginBottom: 10 }}>
-                        <div
-                            style={{ display: 'flex', alignItems: 'center', padding: '4px 2px', cursor: 'pointer', fontSize: 11, fontWeight: 'bold' }}
-                            onClick={() => setRecommendedOpen(!recommendedOpen)}
-                        >
-                            {recommendedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            <span style={{ marginLeft: 2, textTransform: 'uppercase' }}>Recommended</span>
-                            <span style={{ marginLeft: 8, padding: '1px 6px', backgroundColor: '#333', borderRadius: 10, fontSize: 10, fontWeight: 'normal' }}>{recommended.length}</span>
-                        </div>
-                        {recommendedOpen && recommended.map(ext => <ExtensionItem key={ext.id} ext={ext} onToggle={handleToggleInstall} />)}
-                    </div>
+    // ─── Main List View ──────────────────────────────────────────────────────
+    return (
+        <div className="ext-panel">
+            {/* Header */}
+            <div className="ext-header">
+                <div className="ext-title">Extensions</div>
+            </div>
+
+            {/* Search */}
+            <div className="ext-search-wrap">
+                <Search size={13} className="ext-search-icon" />
+                <input
+                    type="text"
+                    placeholder="Search Open VSX Marketplace..."
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    className="ext-search-input"
+                    spellCheck={false}
+                />
+            </div>
+
+            {/* Tabs */}
+            <div className="ext-tabs">
+                <button
+                    className={`ext-tab ${tab === 'marketplace' ? 'ext-tab-active' : ''}`}
+                    onClick={() => setTab('marketplace')}
+                >
+                    <Package size={12} /> Marketplace
+                </button>
+                <button
+                    className={`ext-tab ${tab === 'installed' ? 'ext-tab-active' : ''}`}
+                    onClick={() => setTab('installed')}
+                >
+                    <CheckCircle2 size={12} /> Installed
+                    <span className="ext-tab-badge">{installedExtensions.length}</span>
+                </button>
+            </div>
+
+            {/* Sort (marketplace only) */}
+            {tab === 'marketplace' && (
+                <div className="ext-sort-row">
+                    <select
+                        value={sortBy}
+                        onChange={e => setSortBy(e.target.value as SortBy)}
+                        className="ext-sort-select"
+                    >
+                        <option value="downloadCount">Most Downloads</option>
+                        <option value="averageRating">Highest Rated</option>
+                        <option value="timestamp">Recently Updated</option>
+                        <option value="relevance">Relevance</option>
+                    </select>
+                    {!loading && <span className="ext-result-count">{totalSize.toLocaleString()} results</span>}
+                </div>
+            )}
+
+            {/* Content */}
+            <div className="ext-list-scroll">
+                {tab === 'marketplace' && (
+                    <>
+                        {loading && results.length === 0 && (
+                            <div className="ext-center"><Loader2 size={18} className="ext-spin" /> Searching...</div>
+                        )}
+                        {error && (
+                            <div className="ext-center ext-error"><AlertCircle size={16} /> {error}</div>
+                        )}
+                        {!loading && !error && results.length === 0 && (
+                            <div className="ext-center">No extensions found</div>
+                        )}
+                        {results.map(ext => (
+                            <MarketplaceItem
+                                key={`${ext.namespace}.${ext.name}`}
+                                ext={ext}
+                                installed={isInstalled(ext)}
+                                onInstall={() => handleInstall(ext)}
+                                onUninstall={() => handleUninstall(extensionId(ext))}
+                                onClick={() => handleShowDetail(ext)}
+                            />
+                        ))}
+                    </>
+                )}
+
+                {tab === 'installed' && (
+                    <>
+                        {installedExtensions.length === 0 && (
+                            <div className="ext-center">No extensions installed</div>
+                        )}
+                        {installedExtensions.map(ext => (
+                            <InstalledItem
+                                key={ext.id}
+                                ext={ext}
+                                onUninstall={() => handleUninstall(ext.id)}
+                            />
+                        ))}
+                    </>
                 )}
             </div>
         </div>
     );
 };
 
-const ExtensionItem: React.FC<{ ext: Ext, onToggle: (id: string, e?: React.MouseEvent) => void }> = ({ ext, onToggle }) => {
-    const [hovered, setHovered] = useState(false);
+// ─── Marketplace Extension Card ──────────────────────────────────────────────
 
+const MarketplaceItem: React.FC<{
+    ext: OpenVsxExtension;
+    installed: boolean;
+    onInstall: () => void;
+    onUninstall: () => void;
+    onClick: () => void;
+}> = ({ ext, installed, onInstall, onUninstall, onClick }) => {
     return (
-        <div
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                display: 'flex', padding: '8px 14px', cursor: 'pointer',
-                backgroundColor: hovered ? '#2a2d2e' : 'transparent',
-                position: 'relative'
-            }}
-        >
-            <div style={{ width: 44, height: 44, backgroundColor: '#333', marginRight: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 0, padding: 4, overflow: 'hidden' }}>
-                <span style={{ fontSize: 24, fontWeight: 'bold', color: '#58a6ff' }}>{ext.name.charAt(0)}</span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, justifyContent: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        <span style={{ color: '#fff', fontSize: 13, fontWeight: 500, marginRight: 4 }}>{ext.name}</span>
-                        {ext.verified && <CheckCircle2 size={12} color="#3794ff" fill="rgba(55, 148, 255, 0.2)" style={{ flexShrink: 0 }} />}
-                    </div>
+        <div className="ext-card" onClick={onClick}>
+            {ext.files?.icon ? (
+                <img src={ext.files.icon} alt="" className="ext-card-icon" />
+            ) : (
+                <div className="ext-card-icon ext-icon-placeholder">
+                    {(ext.displayName || ext.name).charAt(0)}
                 </div>
-
-                <div style={{ fontSize: 12, color: '#aaa', margin: '2px 0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {ext.description}
+            )}
+            <div className="ext-card-body">
+                <div className="ext-card-top">
+                    <span className="ext-card-name">{ext.displayName || ext.name}</span>
+                    {ext.verified && <CheckCircle2 size={11} color="#3794ff" fill="rgba(55,148,255,0.2)" />}
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', fontSize: 11, color: '#888', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span>{ext.author}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}><DownloadCloud size={10} /> {ext.downloads}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}><Star size={10} fill={ext.rating >= 4 ? "#888" : "none"} /></span>
-                    </div>
-
-                    {!ext.installed ? (
-                        <button
-                            onClick={(e) => onToggle(ext.id, e)}
-                            style={{
-                                backgroundColor: '#0e639c', color: '#ffffff', border: 'none', padding: '3px 10px',
-                                fontSize: 11, borderRadius: 2, cursor: 'pointer', outline: 'none'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1177bb'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#0e639c'}
-                        >
-                            Install
-                        </button>
-                    ) : (
-                        <button
-                            onClick={(e) => onToggle(ext.id, e)}
-                            title="Uninstall extension"
-                            style={{
-                                backgroundColor: 'transparent', color: '#cc6666', border: '1px solid #cc6666',
-                                padding: '2px 8px', fontSize: 11, borderRadius: 2, cursor: 'pointer',
-                                outline: 'none', display: 'flex', alignItems: 'center', gap: 4
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(204,102,102,0.15)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        >
-                            <Trash2 size={11} /> Uninstall
-                        </button>
+                <div className="ext-card-desc">{ext.description}</div>
+                <div className="ext-card-footer">
+                    <span className="ext-card-ns">{ext.namespace}</span>
+                    <span className="ext-card-stat"><DownloadCloud size={10} /> {formatDownloads(ext.downloadCount)}</span>
+                    {ext.averageRating != null && (
+                        <span className="ext-card-stat"><Star size={10} fill="#e3b341" color="#e3b341" /> {ext.averageRating.toFixed(1)}</span>
                     )}
+                    <div className="ext-card-action">
+                        {installed ? (
+                            <button className="ext-btn ext-btn-uninstall ext-btn-sm" onClick={e => { e.stopPropagation(); onUninstall(); }}>
+                                <Trash2 size={10} /> Uninstall
+                            </button>
+                        ) : (
+                            <button className="ext-btn ext-btn-install ext-btn-sm" onClick={e => { e.stopPropagation(); onInstall(); }}>
+                                Install
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── Installed Extension Card ────────────────────────────────────────────────
+
+const InstalledItem: React.FC<{
+    ext: InstalledExtension;
+    onUninstall: () => void;
+}> = ({ ext, onUninstall }) => {
+    return (
+        <div className="ext-card">
+            {ext.iconUrl ? (
+                <img src={ext.iconUrl} alt="" className="ext-card-icon" />
+            ) : (
+                <div className="ext-card-icon ext-icon-placeholder">
+                    {ext.displayName.charAt(0)}
+                </div>
+            )}
+            <div className="ext-card-body">
+                <div className="ext-card-top">
+                    <span className="ext-card-name">{ext.displayName}</span>
+                </div>
+                <div className="ext-card-desc">{ext.description}</div>
+                <div className="ext-card-footer">
+                    <span className="ext-card-ns">{ext.namespace}</span>
+                    <span className="ext-card-stat">v{ext.version}</span>
+                    <div className="ext-card-action">
+                        <button className="ext-btn ext-btn-uninstall ext-btn-sm" onClick={onUninstall}>
+                            <Trash2 size={10} /> Uninstall
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

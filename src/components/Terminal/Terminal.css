@@ -2,7 +2,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #1e1e2e;
+    background: #0d1117;
 }
 
 .terminal-window.empty {
@@ -28,40 +28,68 @@
     position: relative;
 }
 
+/* ── Tab Bar ────────────────────────────────────── */
 .terminal-tab-bar {
     display: flex;
-    background: #181825;
-    border-bottom: 1px solid #313244;
+    align-items: center;
+    background: #010409;
+    border-bottom: 1px solid #21262d;
     user-select: none;
+    height: 36px;
+    position: relative;
+    /* Removed overflow:auto from here so children can pop out */
+}
+
+.terminal-tabs-scroll-area {
+    display: flex;
+    align-items: center;
+    flex: 1;
     overflow-x: auto;
+    overflow-y: hidden;
+    height: 100%;
+    scrollbar-width: none;
+}
+
+.terminal-tabs-scroll-area::-webkit-scrollbar {
+    display: none;
 }
 
 .terminal-tab {
     display: flex;
     align-items: center;
-    padding: 6px 12px;
-    background: #1e1e2e;
-    color: #a6accd;
-    border-right: 1px solid #313244;
+    padding: 0 14px;
+    height: 100%;
+    background: transparent;
+    color: #6e7681;
+    border-right: 1px solid #21262d;
     cursor: pointer;
     font-size: 12px;
-    min-width: 120px;
-    max-width: 200px;
+    min-width: 140px;
+    max-width: 220px;
+    gap: 6px;
+    transition: all 0.15s ease;
+    position: relative;
 }
 
-.terminal-tab:not(.active) {
-    background: transparent;
-    border-bottom: 1px solid transparent;
+.terminal-tab:hover {
+    background: #161b22;
+    color: #c9d1d9;
 }
 
 .terminal-tab.active {
-    color: #cdd6f4;
-    border-bottom: 1px solid #8caaee;
+    color: #f0f6fc;
+    background: #0d1117;
+    border-bottom: 2px solid #58a6ff;
+}
+
+.terminal-tab-shell-icon {
+    font-size: 11px;
+    flex-shrink: 0;
 }
 
 .terminal-tab-icon {
-    margin-right: 8px;
-    opacity: 0.7;
+    opacity: 0.6;
+    flex-shrink: 0;
 }
 
 .terminal-tab-title {
@@ -69,10 +97,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: 500;
 }
 
 .terminal-tab-close {
-    margin-left: 8px;
+    margin-left: 6px;
     opacity: 0;
     cursor: pointer;
     display: flex;
@@ -80,27 +109,175 @@
     justify-content: center;
     border-radius: 4px;
     padding: 2px;
+    flex-shrink: 0;
+    transition: all 0.15s;
 }
 
 .terminal-tab:hover .terminal-tab-close {
-    opacity: 0.7;
+    opacity: 0.6;
 }
 
 .terminal-tab-close:hover {
-    background: #313244;
-    opacity: 1;
+    background: #30363d;
+    opacity: 1 !important;
+    color: #f85149;
+}
+
+/* ── Add + Shell Selector ──────────────────────── */
+.terminal-tab-add-group {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    position: relative;
+    margin-left: 0;
+    background: #010409;
+    z-index: 10;
+    box-shadow: -8px 0 12px rgba(1, 4, 9, 0.8);
 }
 
 .terminal-tab-add {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 12px;
+    padding: 0 10px;
+    height: 100%;
     cursor: pointer;
-    color: #a6accd;
-    opacity: 0.7;
+    color: #6e7681;
+    transition: all 0.15s;
 }
 
 .terminal-tab-add:hover {
-    opacity: 1;
+    color: #c9d1d9;
+    background: #161b22;
+}
+
+.terminal-shell-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    height: 100%;
+    cursor: pointer;
+    color: #6e7681;
+    border-left: 1px solid #21262d;
+    transition: all 0.15s;
+}
+
+.terminal-shell-selector:hover {
+    color: #c9d1d9;
+    background: #161b22;
+}
+
+.shell-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 998;
+}
+
+.shell-selector-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 200px;
+    background: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(88, 166, 255, 0.1);
+    padding: 4px 0;
+    z-index: 999;
+    backdrop-filter: blur(12px);
+    animation: shellMenuSlide 0.15s ease-out;
+}
+
+@keyframes shellMenuSlide {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.shell-menu-header {
+    padding: 8px 14px 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #6e7681;
+    font-weight: 600;
+    border-bottom: 1px solid #21262d;
+    margin-bottom: 4px;
+}
+
+.shell-menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 14px;
+    background: none;
+    border: none;
+    color: #c9d1d9;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    gap: 10px;
+    transition: all 0.1s;
+}
+
+.shell-menu-item:hover {
+    background: #58a6ff;
+    color: #fff;
+}
+
+.shell-menu-icon {
+    font-size: 13px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.shell-menu-label {
+    flex: 1;
+    text-align: left;
+}
+
+.shell-menu-prompt {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    color: #6e7681;
+    flex-shrink: 0;
+}
+
+.shell-menu-item:hover .shell-menu-prompt {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── xterm container ───────────────────────────── */
+.xterm-container {
+    padding: 0;
+}
+
+.xterm-container .xterm {
+    padding: 8px 4px;
+}
+
+.xterm-container .xterm-viewport {
+    scrollbar-width: thin;
+    scrollbar-color: #30363d transparent;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 4px;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
 }
